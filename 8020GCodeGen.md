@@ -96,7 +96,7 @@ tools used and the stock.
 
 In OnShape, custom featurescript creates the holes in the extrusions
 and exports a custom table with output like this:
-
+<pre>
   (Part1)
   (Face1)
   (Counterbore)
@@ -107,7 +107,7 @@ and exports a custom table with output like this:
   X0.5Y-0.5
   X13Y-0.5
   ...etc...
-
+</pre>
 These are, in order: Part name, face name, hole type, offset X, offset Y,
 extrusion length, extrusion height, then a list of hole centers.
 
@@ -338,11 +338,11 @@ type conversion. For example, expressions involving '+', in particular,
 can be interpreted either as string concatenation or numeric addition. You may
 need to explictly convert to a number (usually you don't need to explicitly
 convert to a string, except maybe for dictionary keys). For example,
-
+<pre>
    var r = getEl("SomeFormInputID").value;
    var x = 12 + r;
    gc = "G0 X" + x;
-
+</pre>
 With the value of the form input SomeFormInputID being 13, for
 example, this will result in gc = "G0 X1213", which is likely not
 correct. This happens because the form input value is typically
@@ -352,11 +352,11 @@ numbers into strings, then do string concatenation. Even though I'm
 aware of this, I still get foiled by it occasionally.
 
 This will produce the intended result:
-
+<pre>
    var r = Number(getEl("SomeFormInputID").value);
    var x = 12 + r;
    gc = "G0 X" + x;
-
+</pre>
 Then gc = "G0 X25". I believe it is good practice to do the type
 conversion when first assigning to a variable. In this example, we all
 understand r as a radius, which is a number. There is no reason for r
