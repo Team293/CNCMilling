@@ -194,22 +194,22 @@ For movement, any coordinates given on the same line indicate a single
 move to those coordinates.
 
 Examples:
-
+<pre>
 G53 G0 X5 Y6
 G0 X4 Y4
-
+</pre>
 This does a rapid move in the machine coordinate system, then does a
 rapid move in the work coordinate system, because the G53 only holds
 for the one block. (G53 instructs the controller to use the machine
 coordinate system for the move that is in the same block.)
-
+<pre>
 G0 X3 Y-1
-
+</pre>
 This moves to X3 Y-1 in a single, straight line (one move).
-
+<pre>
 G0 X3
 Y-1
-
+</pre>
 This moves to X3 and then moves to Y-1 (two different moves).
 
 ## Coordinate Systems
@@ -251,7 +251,7 @@ Activates work coordinate system (WCS) stored in G59.1. Fun fact: G59.1
 refers to WCS register 7, which is why we have P7. P1 goes with G54,
 and P0 is the current coordinate system. The L values are strange and
 confusing, so just use the right one!
-
+<pre>
 P0 <-> active coordinate system
 P1 <-> G54
 P2 <-> G55
@@ -262,12 +262,12 @@ P6 <-> G59
 P7 <-> G59.1
 P8 <-> G59.2
 etc.
-
+</pre>
 Example:
-
+<pre>
 G10 L2 P1 X0.5 Y-1 Z-13 (store these coordinates in register 1 to be used with G54)
 G10 L2 P7 X0.5 Y-1 Z-13 (store these coordinates in register 7 to be used with G59.1)
-
+</pre>
 The first one means that if you say G54, the new X origin will be
 machine X position 0.5, the Y origin will be machine Y position -1,
 and the Z origin will be machine Z position -13. The last one is the
@@ -279,8 +279,9 @@ The movement on this line is to be interpreted in machine coordinates,
 not work coordinates. This only applies to the line it is on.
 
 Example:
-
+<pre>
 G53 G0 X5 Y-1
+</pre>
 
 #### G59.1
 
@@ -295,12 +296,13 @@ units) for all following commands that use it. Often appears in the
 same block with G1.
 
 Examples:
-
+<pre>
 F6.5
 G1 X1 Y-0.5 Z-10
-
+</pre>
+<pre>
 G1 X1 Y-0.5 Z-10 F6.5
-
+</pre>
 Move to the new position at 6.5 in/min. These two sequences are
 equivalent.
 
@@ -311,14 +313,14 @@ lines specifying a coordinate after G0 will result in a G0 move even
 if G0 is not explicitly stated.
 
 Examples:
-
+<pre>
 G0 X1 Y-0.5 Z-20
-
+</pre>
 Rapid move to new position.
-
+<pre>
 G0
 X1 Y-0.5 Z-20
-
+</pre>
 Set G0 mode, then rapid move to new coordinates with the already active G0.
 
 #### G1
@@ -326,20 +328,20 @@ Set G0 mode, then rapid move to new coordinates with the already active G0.
 Move at feed rate set with F. Otherwise it's the same as G0. G1 is also modal.
 
 Examples:
-
+<pre>
 F6.5
 G1 X1 Y-0.5 Z-10
-
+</pre>
 Move to new position at the set feed rate.
-
+<pre>
 G1 X2 Y-0.5 Z-13 F6.5
-
+</pre>
 Move to new position at new feed rate.
-
+<pre>
 G1 F6.5
 X1 Y-0.5 Z-10
 X5 F10
-
+</pre>
 Set G1 mode and feed rate but don't move. Then move to the first
 position at that feed rate. Then move to a new position at a new feed
 rate.
@@ -363,22 +365,22 @@ are often X0 Y0 Z0. This isn't always the case, though. The home
 position may be an entirely different position on some machines.
 
 Examples:
-
+<pre>
 G28
-
+</pre>
 Home all axes at once.
-
+<pre>
 G28 X0 Y0
-
+</pre>
 Home X and Y axes after moving to X0 Y0. Z isn't changed or homed.
-
+<pre>
 G28 X0 Y0 Z5
-
+</pre>
 First move to X0 Y0 Z5, then home X, Y, and Z.
-
+<pre>
 G28 G91 X0 Y0 Z5
 G90
-
+</pre>
 First move 5 in Z from current position, then home all axes. THIS IS
 THE PREFERRED SYNTAX. Just remember you may need to issue a G90
 immediately afterward.
@@ -418,9 +420,9 @@ Turn off the spindle.
 Set spindle RPM.
 
 Example:
-
+<pre>
 S1000
-
+</pre>
 ## Tools
 
 #### G43 H?
@@ -431,9 +433,9 @@ tool number. Usually this command is in or at least near the block
 containing the tool change command.
 
 Example:
-
+<pre>
 G43 H293
-
+</pre>
 Set the tool offset to the offset stored in table position 293 (by
 convention this corresponds to tool 293).
 
@@ -458,9 +460,9 @@ Pause execution and wait for the operator. If there is a comment on
 this line, it is displayed on the console.
 
 Example:
-
+<pre>
 M00 (Hit "cycle start" when ready)
-
+</pre>
 #### M1
 
 Same as M0, but M1 pauses can be disabled on the console.
@@ -484,40 +486,40 @@ clearance. The R allows a rapid move down towards the stock, so that
 drilling (at a lower feed rate) can start much closer to the stock.
 
 Example:
-
+<pre>
 G98 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G81 Z-1 R0.2
 G80
-
+</pre>
 Set the option to return to original Z (see G98) and set feed rate.
 Move above the stock 1 inch for clearance. Move to X1 Y-0.5. Do the
 canned cycle: rapid move to Z0.2, move at 6.5 in/min to Z-1, return
 to Z1 (via G98). End the canned cycles.
 
 This is roughly equivalent to the above, without using a canned cycle:
-
+<pre>
 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G0 Z0.2
 G1 Z-1
 G0 Z1
-
+</pre>
 #### G83 Z? R? Q?
 
 Peck drill. Very similar to G81. Q gives the depth of each peck.
 
 Example:
-
+<pre>
 G98 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G83 Z-1 R0.2 Q0.25
 X3 Y-0.5
 G80
-
+</pre>
 Set the option to return to original Z (see G98) and set feed
 rate. Move above the stock 1 inch for clearance. Move to X1 Y-0.5. Do
 first canned cycle: rapid move to Z0.2, then peck to Z-1 by 0.25
