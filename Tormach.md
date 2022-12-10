@@ -84,57 +84,55 @@ From here, we need to set up the machine.
   
 4. Now we enter tool information.
   
-  a. Click next to the 293 a couple times, and you should be able to
-     enter a name. It doesn't really matter. I use "cb" since this is
-     the counterboring tool. After you press Enter, you will get to
-     the diameter field.
+-  1. Click next to the 293 a couple times, and you should be able to enter a name. It doesn't really matter. I use "cb" since this is
+the counterboring tool. After you press Enter, you will get to
+the diameter field.
   
-  b. Enter 0.375 as the diameter.
+- 2. Enter 0.375 as the diameter.
   
-  c. Enter a length. It doesn't matter much, just make it
-     reasonable. I choose something in the 3-5 inch range.
+- 3. Enter a length. It doesn't matter much, just make it
+  reasonable. I choose something in the 3-5 inch range.
   
-  d. Now do the same process for 294. The diameter should be smaller,
-     say 0.25.
+- 4. Now do the same process for 294. The diameter should be smaller, say 0.25.
   
 5. If you do not set up the automatic tool changer (ATC), the
    simulator will prompt for tool changes, just like on the machine. If
    you want to use the tool changer, follow these steps:
   
-  a. Click the "Settings" tab.
+- 1. Click the "Settings" tab.
   
-  b. Click next to "ATC".
+- 2. Click next to "ATC".
   
-  c. Now go to the "ATC" tab that just sprang into being.
+- 3. Now go to the "ATC" tab that just sprang into being.
   
-  d. Enter "293" in the top left box and click "Insert". A "293"
-     should appear on the right of the tool changer diagram. If it
-     happens to be an asterisk, that just means that the tool is
-     already loaded on the spindle.
+- 4. Enter "293" in the top left box and click "Insert". A "293"
+  should appear on the right of the tool changer diagram. If it
+  happens to be an asterisk, that just means that the tool is
+  already loaded on the spindle.
   
-  e. Click "Tray Fwd".
+- 5. Click "Tray Fwd".
   
-  f. Now insert tool 294.
+- 6. Now insert tool 294.
   
-  g. Go to the the main screen and enter "G53 G0 Z-2" in the MDI
-    box. Wait for it to position.
+- 7. Go to the the main screen and enter "G53 G0 Z-2" in the MDI
+  box. Wait for it to position.
   
-  h. Go back to the ATC tab and click "Set TC Pos".
+- 8. Go back to the ATC tab and click "Set TC Pos".
   
 6. At this point you should be ready to load the file you
    uploaded. (You did, right?) This is a slightly different process than
    on the actual machine.
   
-  a. Go to the "File" tab.
+- 1. Go to the "File" tab.
   
-  b. If you don't see your file in the middle file browser, you may
-     need to click the circular arrow to refresh the list. You will need
-     to do this whenever you upload a new file as well.
+- 2. If you don't see your file in the middle file browser, you may
+  need to click the circular arrow to refresh the list. You will need
+  to do this whenever you upload a new file as well.
   
-  c. Now copy the file to the left.
+- 3. Now copy the file to the left.
   
-  d. Select it and click "Load G-code" or just double click on the
-     file name.
+- 4. Select it and click "Load G-code" or just double click on the
+  file name.
   
 7. You should now be in the main tab with your file loaded and ready
    to go.
@@ -151,14 +149,14 @@ controller should last 6 hours.
 If you get an error like "Tool setter input changed during motion":
 This is a weird simulator issue. It will probably go away if you do a
 move during initialation, say after setting your WCS. I have this sequence:
-<pre>
+```
   (( Initialize Tormach ))
   G17 G20 G90 G40 G49 G64 P0.001 Q0.0000 G80 S0 M5 (boilerplate)
   G10 L2 P7 X0.5 Y-1.385 Z-12.2861 (set 59.1 offsets)
   G59.1 (switch to WCS)
   G0 Z10
   G0 X0 Y0 (safe starting position, also simulator requires a move here)
-</pre>
+```
 
 # G-Code
 
@@ -194,22 +192,22 @@ For movement, any coordinates given on the same line indicate a single
 move to those coordinates.
 
 Examples:
-<pre>
+```
 G53 G0 X5 Y6
 G0 X4 Y4
-</pre>
+```
 This does a rapid move in the machine coordinate system, then does a
 rapid move in the work coordinate system, because the G53 only holds
 for the one block. (G53 instructs the controller to use the machine
 coordinate system for the move that is in the same block.)
-<pre>
+```
 G0 X3 Y-1
-</pre>
+```
 This moves to X3 Y-1 in a single, straight line (one move).
-<pre>
+```
 G0 X3
 Y-1
-</pre>
+```
 This moves to X3 and then moves to Y-1 (two different moves).
 
 ## Coordinate Systems
@@ -251,7 +249,7 @@ Activates work coordinate system (WCS) stored in G59.1. Fun fact: G59.1
 refers to WCS register 7, which is why we have P7. P1 goes with G54,
 and P0 is the current coordinate system. The L values are strange and
 confusing, so just use the right one!
-<pre>
+```
 P0 <-> active coordinate system
 P1 <-> G54
 P2 <-> G55
@@ -262,12 +260,14 @@ P6 <-> G59
 P7 <-> G59.1
 P8 <-> G59.2
 etc.
-</pre>
+```
 Example:
-<pre>
+```
 G10 L2 P1 X0.5 Y-1 Z-13 (store these coordinates in register 1 to be used with G54)
+```
+```
 G10 L2 P7 X0.5 Y-1 Z-13 (store these coordinates in register 7 to be used with G59.1)
-</pre>
+```
 The first one means that if you say G54, the new X origin will be
 machine X position 0.5, the Y origin will be machine Y position -1,
 and the Z origin will be machine Z position -13. The last one is the
@@ -279,9 +279,9 @@ The movement on this line is to be interpreted in machine coordinates,
 not work coordinates. This only applies to the line it is on.
 
 Example:
-<pre>
+```
 G53 G0 X5 Y-1
-</pre>
+```
 
 #### G59.1
 
@@ -296,13 +296,13 @@ units) for all following commands that use it. Often appears in the
 same block with G1.
 
 Examples:
-<pre>
+```
 F6.5
 G1 X1 Y-0.5 Z-10
-</pre>
-<pre>
+```
+```
 G1 X1 Y-0.5 Z-10 F6.5
-</pre>
+```
 Move to the new position at 6.5 in/min. These two sequences are
 equivalent.
 
@@ -313,14 +313,14 @@ lines specifying a coordinate after G0 will result in a G0 move even
 if G0 is not explicitly stated.
 
 Examples:
-<pre>
+```
 G0 X1 Y-0.5 Z-20
-</pre>
+```
 Rapid move to new position.
-<pre>
+```
 G0
 X1 Y-0.5 Z-20
-</pre>
+```
 Set G0 mode, then rapid move to new coordinates with the already active G0.
 
 #### G1
@@ -328,20 +328,20 @@ Set G0 mode, then rapid move to new coordinates with the already active G0.
 Move at feed rate set with F. Otherwise it's the same as G0. G1 is also modal.
 
 Examples:
-<pre>
+```
 F6.5
 G1 X1 Y-0.5 Z-10
-</pre>
+```
 Move to new position at the set feed rate.
-<pre>
+```
 G1 X2 Y-0.5 Z-13 F6.5
-</pre>
+```
 Move to new position at new feed rate.
-<pre>
+```
 G1 F6.5
 X1 Y-0.5 Z-10
 X5 F10
-</pre>
+```
 Set G1 mode and feed rate but don't move. Then move to the first
 position at that feed rate. Then move to a new position at a new feed
 rate.
@@ -365,22 +365,22 @@ are often X0 Y0 Z0. This isn't always the case, though. The home
 position may be an entirely different position on some machines.
 
 Examples:
-<pre>
+```
 G28
-</pre>
+```
 Home all axes at once.
-<pre>
+```
 G28 X0 Y0
-</pre>
+```
 Home X and Y axes after moving to X0 Y0. Z isn't changed or homed.
-<pre>
+```
 G28 X0 Y0 Z5
-</pre>
+```
 First move to X0 Y0 Z5, then home X, Y, and Z.
-<pre>
+```
 G28 G91 X0 Y0 Z5
 G90
-</pre>
+```
 First move 5 in Z from current position, then home all axes. THIS IS
 THE PREFERRED SYNTAX. Just remember you may need to issue a G90
 immediately afterward.
@@ -420,9 +420,9 @@ Turn off the spindle.
 Set spindle RPM.
 
 Example:
-<pre>
+```
 S1000
-</pre>
+```
 ## Tools
 
 #### G43 H?
@@ -433,9 +433,9 @@ tool number. Usually this command is in or at least near the block
 containing the tool change command.
 
 Example:
-<pre>
+```
 G43 H293
-</pre>
+```
 Set the tool offset to the offset stored in table position 293 (by
 convention this corresponds to tool 293).
 
@@ -460,9 +460,9 @@ Pause execution and wait for the operator. If there is a comment on
 this line, it is displayed on the console.
 
 Example:
-<pre>
+```
 M00 (Hit "cycle start" when ready)
-</pre>
+```
 #### M1
 
 Same as M0, but M1 pauses can be disabled on the console.
@@ -486,40 +486,40 @@ clearance. The R allows a rapid move down towards the stock, so that
 drilling (at a lower feed rate) can start much closer to the stock.
 
 Example:
-<pre>
+```
 G98 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G81 Z-1 R0.2
 G80
-</pre>
+```
 Set the option to return to original Z (see G98) and set feed rate.
 Move above the stock 1 inch for clearance. Move to X1 Y-0.5. Do the
 canned cycle: rapid move to Z0.2, move at 6.5 in/min to Z-1, return
 to Z1 (via G98). End the canned cycles.
 
 This is roughly equivalent to the above, without using a canned cycle:
-<pre>
+```
 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G0 Z0.2
 G1 Z-1
 G0 Z1
-</pre>
+```
 #### G83 Z? R? Q?
 
 Peck drill. Very similar to G81. Q gives the depth of each peck.
 
 Example:
-<pre>
+```
 G98 F6.5
 G0 Z1
 G0 X1 Y-0.5
 G83 Z-1 R0.2 Q0.25
 X3 Y-0.5
 G80
-</pre>
+```
 Set the option to return to original Z (see G98) and set feed
 rate. Move above the stock 1 inch for clearance. Move to X1 Y-0.5. Do
 first canned cycle: rapid move to Z0.2, then peck to Z-1 by 0.25
