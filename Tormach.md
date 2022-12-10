@@ -76,68 +76,68 @@ think our Tormach model is here, so I use the 1100M.
 
 From here, we need to set up the machine.
 
-  1. Reset.
+1. Reset.
 
-  2. Reference all axes. Do Z first just to build up the habit.
+2. Reference all axes. Do Z first just to build up the habit.
   
-  3. Click the "Offsets" tab and scroll down to 293 and 294.
+3. Click the "Offsets" tab and scroll down to 293 and 294.
   
-  4. Now we enter tool information.
+4. Now we enter tool information.
   
-    a. Click next to the 293 a couple times, and you should be able to
-       enter a name. It doesn't really matter. I use "cb" since this is
-       the counterboring tool. After you press Enter, you will get to
-       the diameter field.
+  a. Click next to the 293 a couple times, and you should be able to
+     enter a name. It doesn't really matter. I use "cb" since this is
+     the counterboring tool. After you press Enter, you will get to
+     the diameter field.
   
-    b. Enter 0.375 as the diameter.
+  b. Enter 0.375 as the diameter.
   
-    c. Enter a length. It doesn't matter much, just make it
-       reasonable. I choose something in the 3-5 inch range.
+  c. Enter a length. It doesn't matter much, just make it
+     reasonable. I choose something in the 3-5 inch range.
   
-    d. Now do the same process for 294. The diameter should be smaller,
-       say 0.25.
+  d. Now do the same process for 294. The diameter should be smaller,
+     say 0.25.
   
-  5. If you do not set up the automatic tool changer (ATC), the
-  simulator will prompt for tool changes, just like on the machine. If
-  you want to use the tool changer, follow these steps:
+5. If you do not set up the automatic tool changer (ATC), the
+   simulator will prompt for tool changes, just like on the machine. If
+   you want to use the tool changer, follow these steps:
   
-    a. Click the "Settings" tab.
+  a. Click the "Settings" tab.
   
-    b. Click next to "ATC".
+  b. Click next to "ATC".
   
-    c. Now go to the "ATC" tab that just sprang into being.
+  c. Now go to the "ATC" tab that just sprang into being.
   
-    d. Enter "293" in the top left box and click "Insert". A "293"
-    should appear on the right of the tool changer diagram. If it
-    happens to be an asterisk, that just means that the tool is
-    already loaded on the spindle.
+  d. Enter "293" in the top left box and click "Insert". A "293"
+     should appear on the right of the tool changer diagram. If it
+     happens to be an asterisk, that just means that the tool is
+     already loaded on the spindle.
   
-    e. Click "Tray Fwd".
+  e. Click "Tray Fwd".
   
-    f. Now insert tool 294.
+  f. Now insert tool 294.
   
-    g. Go to the the main screen and enter "G53 G0 Z-2" in the MDI
+  g. Go to the the main screen and enter "G53 G0 Z-2" in the MDI
     box. Wait for it to position.
   
-    h. Go back to the ATC tab and click "Set TC Pos".
+  h. Go back to the ATC tab and click "Set TC Pos".
   
-  6. At this point you should be ready to load the file you
-  uploaded. (You did, right?) This is a slightly different process than
-  on the actual machine.
+6. At this point you should be ready to load the file you
+   uploaded. (You did, right?) This is a slightly different process than
+   on the actual machine.
   
-    a. Go to the "File" tab.
+  a. Go to the "File" tab.
   
-    b. If you don't see your file in the middle file browser, you may
-    need to click the circular arrow to refresh the list. You will need
-    to do this whenever you upload a new file as well.
+  b. If you don't see your file in the middle file browser, you may
+     need to click the circular arrow to refresh the list. You will need
+     to do this whenever you upload a new file as well.
   
-    c. Now copy the file to the left.
+  c. Now copy the file to the left.
   
-    d. Select it and click "Load G-code" or just double click on the
-    file name.
+  d. Select it and click "Load G-code" or just double click on the
+     file name.
   
-  7. You should now be in the main tab with your file loaded and ready
-  to go.
+7. You should now be in the main tab with your file loaded and ready
+   to go.
 
 The reason for entering "G53 G0 Z-2" is that you need to set the
 position of the ATC. It uses the current spindle position, and it only
