@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SPIKE Extrusion GCode Generator</title>
+</head>
+<body>
+
+<style type=text/css>
+table {
+    border-collapse: collapse;
+}
+td {
+    vertical-align: top;
+    text-align: left;
+    white-space: nowrap;
+    font-size: 12px;
+}
+td.note {
+    font-size: 11px;
+    font-weight: bold;
+}
+th {
+    text-align: left;
+    font-size: 12px;
+}
+</style>
+
+<script type=text/javascript>
+// Machine parameters may have simple subsitutions performed. For example,
+// %ToolNumber% will be replaced by the tool number being requested. Only a
+// small list of substitution values are allowed for specific parameters, and
+// many of their values are determined within specific sections of code. See
+// allowedSubstitutions below. Recursive substitution is not allowed. Keep
+// it simple.
+//
+// Preserve the types. In particular, numbers must stay numbers! Changing
+// them to strings will break certain operations and result in bad gcode.
+var machines = [
+    {
+        "Name" : "Tormach",
+        "HeaderGC" : "(( Initialize Tormach ))\nG17 G20 G90 G40 G49 G64 P0.001 Q0.0000 G80 S0 M5 (boilerplate)\n", // no movement in this section! (except G28 and G30 are ok)
+        "PostInitGC" : "G0 Z10\nG0 X0 Y0 (safe starting position, also simulator requires a move here)\n",   // performed after setting WCS offsets but before tool load
+        "FooterGC" : "(End)\nM5 S0\nG28 G91 Z0\nG28\nM30\n",    // possibly use G28 (home) instead of G30
+        "SafeRetractZ" : 1,                // used between operations (possible X/Y travel)
+        "RapidToZ" : 0.2,                  // used at start of plunge operations //!! in params instead?
+        "CannedEndGC" : "G80\n",
+        "ToolChangeGC" : "G30\nT%ToolNumber% M6 G43 H%ToolNumber%\n",
+        "MachinePauseGC" : "G30 M00 (%Comment%)\n",
+// Capabilities
+        "CannedDrill" : true,
+        "CannedCounterbore" : true,
+        "CannedHoleCenterPrecedesOpGCode" : true,   // G98 then XY then G81 then XY then G80 (instead of G98 then G81 then XY then G80)
+// Work origin
+        "WCSOffsetX" : 0.5,                // from workpiece stop (machine X0 is at right side of stop)
+        "WCSOffsetY" : -1.385,             // fixed vice jaw face position
+        "WCSOffsetZ" : -13.2861,           // bottom of fixture (top of spoilboard), adjusted by stock height
+        "SetWCSGC" : "G10 L2 P7 X%OffsetX% Y%OffsetY% Z%OffsetZ% (set 59.1 offsets)\nG59.1 (switch to WCS)\n",
+// X stop offset values
+        "MaxX" : 17,
+        "XOffsets" : [ 0, 8, 16 ],   // must be in increasing order
+// Spindle basics
+/*
+  Since we are have noticed some issues with the spindle not turning, do a G30
+  before turning the spindle on so that it is always expected to be turning
+  when it is within a couple inches of the stock. This allows extra time to
+  react.
+*/
+        "SpindleOnGC" : "G30 S%SpindleSpeed% M3 (spindle on and speed)\n",
+        "SpindleOffGC" : "M5 (spindle off)\n",
+// Drilling
+        "DrillToolNumber" : 294,
+        "DrillSpindleSpeed" : 1074,        // RPM
+        "DrillFeedRate" : 6.5,             // in/min
+        "DrillCannedStartGC": "G90 G98 F%FeedRate% (return to original Z)\n",
+        "DrillCannedOpGC" : "G83 Z-%StockHeight% R%RapidToZ% Q0.25 (peck drill)\n",
+// Counterboring
+        "CounterboreToolNumber" : 293,
+        "CounterboreSpindleSpeed" : 3000,
+        "CounterboreFeedRate" : 6.5,
+        "CounterboreCannedStartGC" : "G90 G98 F%FeedRate% (return to original Z)\n",
+        "CounterboreCannedOpGC" : "G81 Z-%CounterboreDepth% R%RapidToZ% (standard drill)\n",
+// Drilling after counterboring
+        "CounterboredDrillToolNumber" : 294,
+        "CounterboredDrillSpindleSpeed" : 1074,        // RPM
+        "CounterboredDrillFeedRate" : 6.5,             // in/min
+        "CounterboredDrillCannedStartGC": "G90 G98 F%FeedRate% (return to original Z)\n",
+        "CounterboredDrillCannedOpGC" : "G83 Z-%StockHeight% R%RapidToZ% Q0.25 (peck drill)\n", // RapidToZ will be close to counterbore depth
+// Scoring
+        "ScoreToolNumber" : 293,
+        "ScoreSpindleSpeed" : 3000,
+        "ScorePlungeFeedRate" : 6.5,
+        "ScoreFeedRate" : 8,
+        "ScoreStartGC" : "G0 X%ScoreX% Y0.5\nZ%RapidToZ% (RapidToZ)\n",
+        "ScoreGC" : "G1 Z-%ScoreDepth% F%PlungeRate%\nY-3.3 F%FeedRate%\n",
+        "ScoreEndGC" : "",
+// Tools
+// NOTE: Tool diameters should be less than 0.5. Say under 0.45 for safety margin.
+// For a larger tool diameter, X0 will need to be changed for increased distance
+// from the first stop, otherwise the tool will collide with the stop.
+        "Tools" : { "293" : { "Diameter" : 0.375 },
+                    "294" : { "Diameter" : 0.375 } },
+    },
+];
+
+// Eh.
+//
+// Partly for efficiency, we define the list of accepted substitutions
+// for each entry in the machine table that accepts them.
+//
+// If you add new placeholders in the machine table strings, you may
+// need to add them here, too.
+var allowedSubstitutions = {
+    "SetWCSGC" : [ "OffsetX", "OffsetY", "OffsetZ" ],
+    "ToolChangeGC" : [ "ToolNumber" ],
+    "SpindleOnGC" : [ "SpindleSpeed" ],
+    "DrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
+    "DrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
+    "CounterboredDrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
+    "CounterboredDrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
+    "CounterboreCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
+    "CounterboreCannedOpGC" : [ "CounterboreDepth", "RapidToZ", "SafeRetractZ" ],
+    "ScoreStartGC" : [ "ScoreX", "RapidToZ", "FeedRate", "SafeRetractZ" ],
+    "ScoreGC" : [ "ScoreDepth", "PlungeRate", "FeedRate", "SafeRetractZ" ],
+    "MachinePauseGC" : [ "Comment" ]
+};
+    
+var form = null;
+var machine = null;
+var currentToolNumber = null;
+var currentSpindleSpeed = 0;
+
+// These are other parameters that are not really part of
+// (or specific to) the machine or fixture. This will also include
+// parameters from the OnShape output, which are added when parsed:
+// "Part", "Face", "HoleType", "StockLength", "StockHeight",
+// "OffsetX", "OffsetY".
+var params = {
+    "CounterboreDepth" : 0.33,
+    "ScoreDepth" : 0.05,
+    "CutoffSeparation" : 0.5,
+    "CutoffStockHeight" : 1.0,
+};
+
+var options = {
+    "DoScoring" : { "default" : true, "value" : true },
+}
+
+// Shorthand.
+function getEl(el) {
+    return document.getElementById(el);
+}
+
+// Round to 3 decimal places.
+function round3D(x) {
+    return Math.round(x * 1000.0) / 1000.0;
+}
+
+// Called when the machine select dropdown is changed.
+function updateMachineSelect() {
+    machine = machines[getEl("machineSelect").selectedIndex];
+}
+
+// Called when the scoring checkbox is changed.
+function updateDoScoringCheck() {
+    clearGCode();
+    if (getEl("doScoringCheck").checked) {
+        options["DoScoring"]["value"] = true;
+    } else {
+        options["DoScoring"]["value"] = false;
+    }
+}
+
+// Parse the information from the custom table in OnShape
+// and generate the list of holes.
+//
+// Returns holes[].
+function parseHoleDesc() {
+
+    el = getEl("holeDescText");
+    var lines = el.value.split(/\r?\n/);
+    if (lines.length < 7) {
+        alert("Not enough lines in hole description");
+        return null;
+    }
+    params["Part"] = lines[0].replace(/[\(\)]/g, '');
+    params["Face"] = lines[1].replace(/[\(\)]/g, '');
+    params["HoleType"] = lines[2].replace(/[\(\)]/g, '');
+    params["OffsetX"] = Number(lines[3]);       // ignored
+    params["OffsetY"] = Number(lines[4]);       // ignored
+    params["StockLength"] = lines[5];
+    params["StockHeight"] = lines[6];
+    var v;
+    v = params["StockLength"];
+    if (!isNumber(v)) {
+        alert("Suspicious stock length '" + v + "'");
+        return null;
+    }
+    v = params["StockLength"] = Number(params["StockLength"]);
+    if ((v < 1.0) || (v > Number(contextValue("MaxX", null)) + machine["XOffsets"][machine["XOffsets"].length - 1])) {
+        alert("Stock length '" + v + "' is out of range");
+        return null;
+    }
+    v = params["StockHeight"];
+    if (!isNumber(v)) {
+        alert("Suspicious stock height '" + v + "'");
+        return null;
+    }
+    v = params["StockHeight"] = Number(params["StockHeight"]);
+    if ((v < 1.0) || (v > 3.0)) {
+        alert("Suspicious stock height '" + v + "'");
+        return null;
+    }
+    var holes = [];
+    for (var i = 7; i < lines.length; i++) {
+        var hole = {};
+        var m = lines[i].match(/^\s*X(\-?\d+(\.\d+)?)\s*Y(\-?\d+(\.\d+)?)\s*$/i);
+        if (m == null) {
+            if (lines[i].match(/^\s*$/)) {
+                continue;
+            }
+            alert("Bad hole coordinates '" + lines[i] + "'");
+            return null;
+        }
+        hole["HoleCenterX"] = Number(m[1]);
+        hole["HoleCenterY"] = Number(m[3]);
+        hole["HoleCenter"] = lines[i];   // save for debugging
+        if ((hole["HoleCenterX"] < 0.0) || (hole["HoleCenterX"] > params["StockLength"])
+            || (hole["HoleCenterY"] > 0.0) || (hole["HoleCenterY"] < -3.0)) {  //!! arbitrary Y max
+            alert("Hole at X" + hole["HoleCenterX"] + " Y" + hole["HoleCenterY"] + " is outside stock");
+            return null;
+        }
+        holes.push(hole);
+    }
+    getEl("saveFileNameText").value = "293Holes_" + params["Part"] + "_" + params["Face"] + ".txt";
+    return holes;
+}
+
+// Find the best offset stop to use for the given X.
+function findBestOffset(x) {
+    var n = 0;
+    var maxX = Number(contextValue("MaxX", null));
+    while ((n < machine["XOffsets"].length) && (x > maxX + machine["XOffsets"][n])) {
+        n++;
+    };
+    if (n == machine["XOffsets"].length) {
+        return null;
+    }
+    return n;
+}
+
+// Construct the lists of jobs, one list per offset.
+// Do scoring first, then counterbores, then basic drills.
+//
+// Takes holes[], returns offsetJobs[].
+function makeOffsetJobs(holes) {
+    // sort holes by increasing X and compute offsets
+//    holes.sort(function(a, b) { return a["HoleCenterX"] < b["HoleCenterX"]; });
+    var offsetJobs = [];
+    for (var i = 0; i < machine["XOffsets"].length; i++) {
+        offsetJobs.push([]);
+    }
+
+    if (options["DoScoring"]["value"]) {
+        var r = Number(machine["Tools"][String(contextValue("ScoreToolNumber", null))]["Diameter"]) / 2.0;
+        var job;
+        job = { "Type" : "Score", "X" : -r, "OriginalX" : 0 };
+        offsetJobs[0].push(job);
+        var x = params["StockLength"];
+        job = { "Type" : "Score", "X" : x + r, "OriginalX" : x };
+        var n = findBestOffset(job["X"]);
+        if (n == null) {
+            alert("Scoring at X" + job["OriginalX"] + " exceeds machine capability with current offsets");
+            return null;
+        }
+        offsetJobs[n].push(job);
+    }
+
+    // holes
+    for (var i = 0; i < holes.length; i++) {
+        var hole = holes[i];
+        // find appropriate offset for hole
+        var n = findBestOffset(hole["HoleCenterX"]);
+        if (n == null) {    //!! check n can be 0
+            alert("Hole at X" + hole["HoleCenterX"] + " exceeds machine capability with current offsets");
+            return null;
+        }
+        // add to jobs for this offset
+        offsetJobs[n].push({ "Type" : "Hole", "HoleIndex" : i });
+    }
+
+    return offsetJobs;
+}
+
+// This is not a pillar of efficiency!
+//
+// Find the value of a parameter based on the unique name.
+// The value to use is first taken from the debug input by the same
+// name, if it exists, otherwise the machine parameters are
+// searched, then the general parameters. This is a little odd,
+// but it makes handling parameter values and overrides easy.
+//
+// Also, perform subsitutions. Look at the allowed substitutions
+// for the given parameter, then look for values. First, the
+// passed substValues{} is used. If not found, the value is
+// taken from the machine or general parameters.
+//
+// Takes the parameter name and the override values and
+// returns the value to use in the current context.
+function contextValue(name, substValues) {
+    var v = null;
+    var subst = null;
+
+    if ((v == null) && (name in machine)) {
+        v = machine[name];
+    }
+    if ((v == null) && (name in params)) {
+        v = params[name];
+    }
+    if (name in allowedSubstitutions) {
+        subst = allowedSubstitutions[name];
+    }
+    if ((v != null) && (subst != null)) {
+        for (var i = 0; i < subst.length; i++) {
+            var key = subst[i];
+            var sv = null;
+            if ((substValues != null) && (key in substValues)) {
+                sv = substValues[key];
+            } else {
+                sv = contextValue(key, null);  // no nested substitutions?
+            }
+            if (sv != null) {
+                var regex = new RegExp("%" + key + "%", "g");
+                v = v.replace(regex, sv);
+            }
+        }
+    }
+    return v;
+}
+
+// Check whether the requested spindle speed is different.
+// If the given speed is 0, turn off the spindle. Otherwise,
+// turn it on at the given speed.
+//
+// Since we have sometimes observed that the spindle doesn't turn,
+// as a safety we may need to add extra gcode (like G30) prior to
+// turning on the spindle. This gives the operator time to react.
+// A good rule of thumb is to ensure that the spindle should always
+// be spinning if the tool is within a couple of inches from the stock.
+// That makes observation easier. This routine was added to prevent
+// mutiple extra operations (like G30) when they are not needed.
+function checkChangeSpindleSpeed(spd) {
+    if (spd == 0) {
+        if (currentSpindleSpeed != 0) {
+            currentSpindleSpeed = 0;
+            return contextValue("SpindleOffGC", null);
+        }
+        return "";
+    } else if (spd != currentSpindleSpeed) {
+        currentSpindleSpeed = spd;
+        return contextValue("SpindleOnGC", { "SpindleSpeed" : spd });
+    }
+    return "";
+}
+
+// Check whether the tool needs to be changed (and output the gcode)
+// or use the current tool.
+//
+// This routine always leaves the spindle off if the tool is changed.
+// We must always run checkChangeSpindleSpeed() after calling.
+function checkChangeTool(tn) {
+    if (tn != currentToolNumber) {
+        currentToolNumber = tn;
+        return checkChangeSpindleSpeed(0) + contextValue("ToolChangeGC", { "ToolNumber" : tn });
+    }
+    return "";
+}
+
+// Handle scoring jobs for this offset. This is called once for each
+// score, and the caller provides the X offset to use.
+function doScoring(job, xOffset) {
+    var gc = "(( Score at " + job["OriginalX"] + " ))\n";
+    gc += checkChangeTool(contextValue("ScoreToolNumber", null));
+    gc += checkChangeSpindleSpeed(contextValue("ScoreSpindleSpeed", null));
+    var x = round3D(job["X"] - xOffset);
+    var r1 = machine["Tools"][contextValue("ScoreToolNumber", null)]["Diameter"] / 2.0;
+    if ((x < -r1) || (x > Number(contextValue("MaxX", null)) - r1)) {  //!! we allow down to X - r1?
+        alert("Score at X" + job["OriginalX"] + " is out of range");
+        return null;
+    }
+    gc += "G0 Z" + contextValue("SafeRetractZ", null) + " (SafeRetractZ)\n";
+    gc += contextValue("ScoreStartGC", { "ScoreX" : x });
+    gc += contextValue("ScoreGC", { "PlungeRate" : contextValue("ScorePlungeFeedRate", null), "FeedRate" : contextValue("ScoreFeedRate", null) });
+    var v = contextValue("ScoreEndGC", null);
+    if (v != "") gc += v;   // should really do this in general
+    gc += "G0 Z" + contextValue("SafeRetractZ", null) + " (SafeRetractZ)\n";
+    return gc;
+}
+
+// Generate holes of the given type. This is called for each hole
+// type within the jobs for each offset. The caller provides the
+// operation, list of holes, and the X offset to use.
+//
+// This is useful because counterbores are really two operations
+// for each hole: counterbore and drill.
+function doGenerateHoleOp(op, holes, xOffset) {
+    var gc;
+    gc = "(( " + op + " ))\n";
+    gc += checkChangeTool(contextValue(op + "ToolNumber", null));
+    gc += checkChangeSpindleSpeed(contextValue(op + "SpindleSpeed", null));
+    gc += "G0 Z" + contextValue("SafeRetractZ", null) + " (SafeRetractZ)\n";
+    gc += contextValue(op + "CannedStartGC", { "FeedRate" : contextValue(op + "FeedRate", null) });
+    var opStarted = false;
+/*
+  We should be sure that, at least when CannedHoleCenterPrecedesOpGCode is true,
+  the first XY is issued in G0 mode. If not (and this is not terrible,
+  just annoying), then a slow feed rate might be used. Since we have SafeRetractZ
+  ahead of this, and it is done in G0, it should be fine. Note that we should
+  not specify G0 for subsequent XY in the canned cycles.
+*/
+    if (!contextValue("CannedHoleCenterPrecedesOpGCode", null)) {   //!! UNTESTED
+        // any counterbored hole will be clear down to the counterbore depth
+        if (op == "CounterboredDrill") {
+            gc += contextValue(op + "CannedOpGC", { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1 });
+        } else {
+            gc += contextValue(op + "CannedOpGC", null);
+        }
+        opStarted = true;
+    }
+    for (var i = 0; i < holes.length; i++) {
+        var hole = holes[i];
+        var x = hole["HoleCenterX"] - xOffset;
+        var y = hole["HoleCenterY"];
+        var r1 = machine["Tools"][String(contextValue(op + "ToolNumber", null))]["Diameter"] / 2.0 + 0.1;  //!! arbitrary, for safety checks only
+        if ((x < 0.0) || (x > contextValue("MaxX", null) - r1)   // we allow down to X0
+            || (y > -r1) || (y < -3.0 + r1)) {  //!! arbitrary Y max
+            alert("Hole at X" + x + " Y" + y + " has bad center coordinates");
+            return null;
+        }
+        gc += "X" + x + " Y" + y + " (" + hole["HoleCenter"] + ")\n";
+        if ((contextValue("CannedHoleCenterPrecedesOpGCode", null)) && (!opStarted)) {
+            // any counterbored hole will be clear down to the counterbore depth
+            if (op == "CounterboredDrill") {
+                gc += contextValue(op + "CannedOpGC", { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1 });
+            } else {
+                gc += contextValue(op + "CannedOpGC", null);
+            }
+            opStarted = true;
+        }
+    }
+    gc += contextValue("CannedEndGC", null);
+    gc += "G0 Z" + contextValue("SafeRetractZ", null) + " (SafeRetractZ)\n";
+    return gc;
+}
+
+// Generate the gcode.
+function doBSGenerate() {
+
+    var el = getEl("gCode");
+    var holes = parseHoleDesc();
+    if (holes == null) {
+        el.innerHTML = "errors";
+        return;
+    }
+    var offsetJobs = makeOffsetJobs(holes);
+    if (offsetJobs == null) {
+        el.innerHTML = "errors";
+        return;
+    }
+
+    // header stuff
+    var gc = "(Bore hole pattern and score extrusion for cutting to length)\n";
+    gc += "(Part: " + params["Part"] + ")\n(Face: " + params["Face"] + ")\n(Holes: " + params["HoleType"] + ")\n";
+    gc += contextValue("HeaderGC", null);
+    gc += contextValue("SetWCSGC", {
+        "OffsetX" : contextValue("WCSOffsetX", null),
+        "OffsetY" : contextValue("WCSOffsetY", null),
+        "OffsetZ" : Number(contextValue("WCSOffsetZ", null)) + params["StockHeight"] });
+    gc += contextValue("PostInitGC", null);
+
+    // go through offset job list in offset order
+    for (var o = 0; o < offsetJobs.length; o++) {
+
+        var nc;
+
+        if (offsetJobs[o].length < 1) continue;   // no jobs for this offset
+
+        gc += checkChangeSpindleSpeed(0);
+        // the comments following M0 (and M1) are displayed on the console
+//        gc += contextValue("MachinePauseGC", null) + " (STOCK: Move to " + machine["XOffsets"][o] + " inch stop then press cycle start)\n";
+        gc += contextValue("MachinePauseGC", { "Comment" : "STOCK: Move to " + machine["XOffsets"][o] + " inch stop then press cycle start" });
+
+        // scoring first
+        for (var j = 0; j < offsetJobs[o].length; j++) {
+            var job = offsetJobs[o][j];
+            if (job["Type"] == "Score") {
+                nc = doScoring(job, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
+            }
+        }
+
+        // now holes (counterbore then drill)
+        var offsetHoles = [];
+        for (var j = 0; j < offsetJobs[o].length; j++) {
+            var job = offsetJobs[o][j];
+            if (job["Type"] == "Hole") {
+                offsetHoles.push(holes[job["HoleIndex"]]);
+            }
+        }
+        if (offsetHoles.length > 0) {
+            if (params["HoleType"] == "Counterbore") {
+                // first counterbore
+                nc = doGenerateHoleOp("Counterbore", offsetHoles, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
+                // we must follow the counterbore with a through drill
+                // this is optimized slightly because we know the counterbore has cleared stock down to the counterbore depth
+                nc = doGenerateHoleOp("CounterboredDrill", offsetHoles, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
+            } else if (params["HoleType"] == "Simple") {
+                nc = doGenerateHoleOp("Drill", offsetHoles, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
+            }
+        }
+    }
+
+    gc += contextValue("FooterGC", null);
+    el.innerHTML = gc;
+}
+
+// Generate cut-off gcode.
+function doCOGenerate() {
+    var el = getEl("gCode");
+    var sh = contextValue("CutoffStockHeight", null);
+    var sep = contextValue("CutoffSeparation", null);
+    var num = getEl("cutoffNumber").value;
+    var len = getEl("cutoffLength").value;
+
+    var r = machine["Tools"][contextValue("ScoreToolNumber", null)]["Diameter"] / 2.0;
+
+    if ((!isNumber(sh)) || (sh = Number(sh), (sh != 1.0))) {
+        alert("Only 1 inch high stock is supported");
+        el.innerHTML = "errors";
+        return;
+    }
+    if ((!isNumber(len))
+        || (len = Number(len), ((len < 1.0) || (len > contextValue("MaxX", null))))) {
+        alert("Suspicious cut-off length '" + len + "'");
+        el.innerHTML = "errors";
+        return;
+    }
+    if ((!isNumber(sep)) || (sep = Number(sep), ((sep < 2 * r) || (sep > len)))) {
+        alert("Suspicious cut-off separation '" + sep + "'");
+        el.innerHTML = "errors";
+        return;
+    }
+    if ((!isInteger(num)) || (num = Number(num), (num < 1))) {
+        alert("Suspicious cut-off number '" + num + "'");
+        el.innerHTML = "errors";
+        return;
+    }
+    if (num * (len + sep) + r > contextValue("MaxX", null)) {
+        alert("Cut-offs exceed maximum X (" + contextValue("MaxX", null) + ")");
+        el.innerHTML = "errors";
+        return;
+    }
+
+    // header stuff
+    var gc = "(Score extrusion for cut-off lengths)\n";
+    gc += "(Extrusion height: " + sh + ")\n";
+    gc += "(Cut-off length: " + len + ")\n";
+    gc += "(Cut-off number: " + num + ")\n";
+    gc += contextValue("HeaderGC", null);
+    gc += contextValue("SetWCSGC", {
+        "OffsetX" : contextValue("WCSOffsetX", null),
+        "OffsetY" : contextValue("WCSOffsetY", null),
+        "OffsetZ" : Number(contextValue("WCSOffsetZ", null)) + sh });
+    gc += contextValue("PostInitGC", null);
+
+    for (var i = 0; i < num; i++) {
+        var leftX = i * (len + sep);
+        var rightX = leftX + len;
+        nc = doScoring({ "X" : leftX - r, "OriginalX" : leftX }, 0);
+        if (nc == null) {
+            getEl("gCode").innerHTML = "errors";
+            return;
+        }
+        gc += nc;
+        nc = doScoring({ "X" : rightX + r, "OriginalX" : rightX }, 0);
+        if (nc == null) {
+            getEl("gCode").innerHTML = "errors";
+            return;
+        }
+        gc += nc;
+    }
+
+    gc += contextValue("FooterGC", null);
+    el.innerHTML = gc;
+}
+
+// Check if the string matches a valid number pattern.
+// (This doesn't check if the supplied variable is actually
+// of type "number".)
+function isNumber(x) {
+    return String(x).match(/^\-?\d+(\.\d*)?$/);
+}
+
+// Similar to above, but further constrain it to an integer pattern.
+function isInteger(x) {
+    return String(x).match(/^\-?\d+(\.0*)?$/);
+}
+
+// Check parameters for acceptable values. Some of the imposed limits
+// are arbitrary. Some of these may seem unnecessary. Just being careful.
+function validateParameters() {
+    //!! lots of arbitrary values here
+    var v;
+    v = contextValue("WCSOffsetZ", null);
+    if ((!isNumber(v)) || (v > -10.0) || (v < -13.4)) {
+        alert("Suspicious WCSOffsetZ: '" + v + "'");
+        return false;
+    }
+    v = contextValue("WCSOffsetY", null);
+    if ((!isNumber(v)) || (v > 0.0) || (v < -3)) {
+        alert("Suspicious WCSOffsetY: '" + v + "'");
+        return false;
+    }
+    v = contextValue("WCSOffsetX", null);
+    if ((!isNumber(v)) || (v < 0.5) || (v > 3.0)) {
+        alert("Suspicious WCSOffsetX: '" + v + "'");
+        return false;
+    }
+    v = contextValue("WCSOffsetX", null);
+    if ((!isNumber(v)) || (v < 0.5) || (v > 3.0)) {
+        alert("Suspicious WCSOffsetX: '" + v + "'");
+        return false;
+    }
+    v = contextValue("CounterboreDepth", null);
+    if ((!isNumber(v)) || (v < 0.0) || (v > 0.5)) {
+        alert("Suspicious CounterboreDepth: '" + v + "'");
+        return false;
+    }
+    v = contextValue("ScoreDepth", null);
+    if ((!isNumber(v)) || (v < 0.0) || (v > 0.1)) {
+        alert("Suspicious ScoreDepth: '" + v + "'");
+        return false;
+    }
+    v = contextValue("SafeRetractZ", null);
+    if ((!isNumber(v)) || (v < 0.05) || (v > 15.0)) {
+        alert("Suspicious SafeRetractZ: '" + v + "'");
+        return false;
+    }
+    v = contextValue("RapidToZ", null);
+    if ((!isNumber(v)) || (v < 0.05) || (v > 5.0)) {
+        alert("Suspicious RapidToZ: '" + v + "'");
+        return false;
+    }
+    v = contextValue("MaxX", null);
+    if ((!isNumber(v)) || (v < 6.0) || (v > 17.5)) {
+        alert("Suspicious MaxX: '" + v + "'");
+        return false;
+    }
+    for (var op in [ "Counterbore", "CounterboredDrill", "Drill", "Score" ].values) {
+        v = contextValue(op + "ToolNumber", null);
+        if ((!isInteger(v)) || (v < 1) || (v > 1000)) {
+            alert("Suspicious " + op + "ToolNumber: '" + v + "'");
+            return false;
+        }
+        v = contextValue(op + "SpindleSpeed", null);
+        if ((!isInteger(v)) || (v < 500) || (v > 5000)) {
+            alert("Suspicious " + op + "SpindleSpeed: '" + v + "'");
+            return false;
+        }
+        v = contextValue(op + "FeedRate", null);
+        if ((!isNumber(v)) || (v < 0.1) || (v > 50)) {
+            alert("Suspicious " + op + "FeedRate: '" + v + "'");
+            return false;
+        }
+    }
+    v = contextValue("ScorePlungeFeedRate", null);
+    if ((!isNumber(v)) || (v < 0.1) || (v > 50)) {
+        alert("Suspicious ScorePlungeFeedRate: '" + v + "'");
+        return false;
+    }
+    for (var num in machine["Tools"]) {
+        v = machine["Tools"][num]["Diameter"];
+        if ((!isNumber(v)) || (v < 0.1) || (v > 0.45)) {
+            alert("Suspicious diameter '" + v + "' for tool " + num);
+            return false;
+        }
+    }
+    // Special case: Scoring tool must have diameter smaller than 0.5,
+    // since first stop is at X-0.5.
+    v = machine["Tools"][contextValue("ScoreToolNumber", null)]["Diameter"];
+    if (v > 0.45) {
+        alert("Scoring tool must have diameter <= 0.45 or it will collide with first stop");
+        return false;
+    }
+    v = contextValue("CutoffSeparation", null);
+    if ((!isNumber(v)) || (v < machine["Tools"][contextValue("ScoreToolNumber", null)]["Diameter"])) {
+        alert("Suspicious CutoffSeparation: '" + v + "'");
+        return false;
+    }
+    // stock height, stock length, cut-off length, cut-off number are checked elsewhere
+    return true;
+}
+
+// Top level gcode generation function.
+function doGenerate() {
+    currentToolNumber = null;
+    if (!validateParameters()) {
+        getEl("gCode").innerHTML = "errors";
+        return;
+    }
+    if (form == "BoreAndScore") doBSGenerate();
+    else if (form == "Cutoff") doCOGenerate();
+    else if (form == "Verify") doVerifyGenerate();
+}
+
+// Clear input and output fields, but leave debug values and other
+// options alone.
+function clearInputOutput() {
+    clearGCode();
+    if (form == "BoreAndScore") {
+        getEl("holeDescText").value = "";
+    } else if (form == "Cutoff") {
+        getEl("cutoffLength").value = "";
+        getEl("cutoffNumber").value = "";
+    } else if (form == "Verify") {
+        /*! UNIMPLEMENTED !*/
+    }
+}
+
+// Reset all input and output fields, options, and debug values.
+// Reset the form state.
+function resetDefaults() {
+    for (var key in options) {
+        options[key]["value"] = options[key]["default"];
+    }
+    getEl("operationSelect").selectedIndex = 0;
+    updateOperationSelect();
+    currentToolNumber = null;
+    getEl("machineSelect").selectedIndex = 0;
+    getEl("holeDescText").value = "";
+    getEl("doScoringCheck").checked = true;
+    clearInputOutput();
+    updateMachineSelect();
+}
+
+// Add defined machines to the machine dropdown selection.
+function populateMachineList() {
+    var sel = getEl("machineSelect");
+    var mi;
+    for (mi = 0; mi < machines.length; mi++) {
+        var opt = document.createElement("option");
+        opt.label = machines[mi]['Name'];
+        opt.value = machines[mi]['Name'];
+        sel.add(opt);
+    }
+    sel.selectedIndex = 0;
+}
+
+// Load the input fields with the sample values.
+function loadTestInput() {
+    if (form == "BoreAndScore") {
+        getEl("holeDescText").value = "(Part1)\n(Face1)\n(Counterbore)\n0\n0\n30\n1\nX1Y-0.5\nX10Y-0.5\nX17.5Y-0.4\nX23.75Y-0.75\n";
+    } else if (form == "Cutoff") {
+        getEl("cutoffLength").value = 1;
+        getEl("cutoffNumber").value = 3;
+    } else if (form == "Verify") {
+        /*! UNIMPLEMENTED !*/
+    }
+    clearGCode();
+}
+
+// Magic to allow the output within the gcode textarea to be
+// downloaded by clicking the button.
+function saveGCode() {
+    var a = document.createElement("a");
+    if ("download" in a) {
+        a.href = "data:text/plain:charset=utf-8," + escape(getEl("gCode").value);
+        a.setAttribute("download", getEl("saveFileNameText").value);
+        document.body.appendChild(a);
+        var ev = document.createEvent("MouseEvents");
+        ev.initMouseEvent("click", true, false, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+        a.dispatchEvent(ev);
+        document.body.removeChild(a);
+    } else {
+        alert("File saving does not seem to be supported for this browser");
+    }
+}
+
+// Called when the operation selection is changed.
+function updateOperationSelect() {
+    var op = getEl("operationSelect").value;
+    clearInputOutput();
+    if (op == "BoreAndScore") {
+        getEl("boreAndScoreDiv").hidden = false;
+        getEl("cutoffDiv").hidden = true;
+        getEl("verifyDiv").hidden = true;
+        getEl("commonDiv").hidden = false;
+        form = "BoreAndScore";
+        getEl("saveFileNameText").value = "293ExtrusionHoleGCode.txt";
+    } else if (op == "Cutoff") {
+        getEl("boreAndScoreDiv").hidden = true;
+        getEl("cutoffDiv").hidden = false;
+        getEl("verifyDiv").hidden = true;
+        getEl("commonDiv").hidden = false;
+        form = "Cutoff";
+        getEl("saveFileNameText").value = "293ExtrusionCutoffGCode.txt";
+    } else if (op == "Verify") {
+        getEl("boreAndScoreDiv").hidden = true;
+        getEl("cutoffDiv").hidden = true;
+        getEl("verifyDiv").hidden = false;
+        getEl("commonDiv").hidden = false;
+        form = "Verify";
+        getEl("saveFileNameText").value = "293ExtrusionCheckupGCode.txt";
+    } else {
+        getEl("boreAndScoreDiv").hidden = true;
+        getEl("cutoffDiv").hidden = true;
+        getEl("verifyDiv").hidden = true;
+        getEl("commonDiv").hidden = true;
+        form = null;
+        getEl("saveFileNameText").value = "";
+    }
+}
+
+// Just clear the gcode textarea.
+function clearGCode() {
+    getEl("gCode").innerHTML = "gcode will appear here";
+}
+
+</script>
+
+<!-- Now begins the actual HTML form. As different options are
+     selected, different <div> sections are made visible/invisible. -->
+
+<form id=gcodeForm>
+<table>
+<tr><td><hr style="width:100%;color:gray;text-align:left;margin-left:0"></td></tr>
+<tr><td><font size=2>Team 293 (SPIKE) G-code generator. Last updated Dec 8, 2022.</font></td></tr>
+<tr><td><hr style="width:100%;color:gray;text-align:left;margin-left:0"></td></tr>
+</table>
+<label for=machineSelect>Machine:</label>&nbsp;<select id=machineSelect name=machineSelect onchange=updateMachineSelect() disabled></select>
+<label for=operationSelect>Operation:</label>&nbsp;<select id=operationSelect name=operationSelect onchange=updateOperationSelect() autofocus><option value="Choose" selected>-- Choose --</option><option value="BoreAndScore">Bore and Score</option><option value="Cutoff">Cut-off Lengths</option><option value="Verify">Daily Check-up</option></select>
+<div id=boreAndScoreDiv hidden>
+<table>
+<tr>
+<td><b>Hole parameters from OnShape:</b><br>
+<textarea name=holeDescText id=holeDescText cols=32 rows=22 onfocus=clearGCode() ></textarea><br>
+<input type=checkbox checked id=doScoringCheck name=doScoringCheck onchange=updateDoScoringCheck() />&nbsp;<label for=doScoringCheck>Generate scoring marks</label>
+</td>
+<td style="padding: 0px 0px 0px 10px">
+Hole parameters follow this format:<br><br>
+<table id=exampleTable cellpadding=3>
+  <tr><th></th><th>Example</th></tr>
+  <tr><td>Part name</td><td>(Part1)</td></tr>
+  <tr><td>Face name</td><td>(Top)</td></tr>
+  <tr><td>Hole type</td><td>(Counterbore)</td></tr>
+  <tr><td>* X Offset</td><td>0</td></tr>
+  <tr><td>* Y Offset</td><td>0</td></tr>
+  <tr><td>Stock length</td><td>20</td></tr>
+  <tr><td>Stock height</td><td>1</td></tr>
+  <tr><td>Hole 1 center</td><td>X5Y-0.5</td></tr>
+  <tr><td>Hole 2 center</td><td>X10Y-0.5</td></tr>
+  <tr><td colspan=2>.... and so on</td></tr>
+  <tr><td></td></tr>
+  <tr><td colspan=2>(*) unused</td></tr>
+  <tr><td></td></tr>
+  <tr><td colspan=2 class=note>X0 at first workpiece stop + 0.5</td></tr>
+  <tr><td colspan=2 class=note>Y0 at face of fixed jaw of vice</td></tr>
+  <tr><td colspan=2 class=note>Z0 will be stock top</td></tr>
+</table>
+</td>
+</tr>
+</table>
+</div>
+<div id=cutoffDiv hidden>
+<table>
+<tr><td><b>Enter the length of cut-off pieces and the number of pieces:</b></td></tr>
+<tr><td>
+<label for=cutoffLength>Cut-off length:</label>&nbsp;<input type=text size=5 name=cutoffLength id=cutoffLength onchange=clearGCode() />&nbsp;<label for=cutoffNumber>Number:</label>&nbsp;<input type=text size=5 name=cutoffNumber id=cutoffNumber onchange=clearGCode() />
+</td></tr>
+<tr><td><b>1 inch square extrusion (1010) only!</b></td></tr>
+</table>
+</div>
+<div id=verifyDiv hidden>
+</div>
+<div id=commonDiv hidden>
+<table>
+<tr><td><input type=button onclick=doGenerate() name=generateButton id=generateButton value="Generate" /><input type=button onclick=clearInputOutput() name=clearButton id=clearButton value="Clear" /><input type=button onclick=loadTestInput() name=loadTestInputButton id=loadTestInputButton value="Load sample input" /></td>
+<td style="text-align: right"><input type=button onclick=resetDefaults() name=resetButton id=resetButton value="Reset all" /></td></tr>
+<tr><td colspan=2><textarea readonly id=gCode cols=64 rows=24></textarea></td></tr>
+<tr><td colspan=2><input type=button onclick=saveGCode() value="Save" />&nbsp;<em><font color=0x333>as</font></em>&nbsp;<input type=text id=saveFileNameText name=saveFileNameText size=32 /></td></tr>
+</table>
+</div>
+</form>
+
+<script type=text/javascript>
+/* Initialize some things after the html form is defined. */
+populateMachineList();
+resetDefaults();
+// add the offsets from the machine table programmatically
+var el = getEl("exampleTable");
+el = el.insertRow();
+el = el.insertCell();
+el.colspan = 2;
+el.className = "note";
+el.innerHTML = "<b>X stop offsets:";
+for (var i = 0; i < machine["XOffsets"].length; i++) {
+    if (i > 0) el.innerHTML += ",";
+    el.innerHTML += " " + machine["XOffsets"][i];
+}
+el.innerHTML += "</b>";
+</script>
+
+</body>
+</html>
