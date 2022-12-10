@@ -5,17 +5,17 @@ Observe good practices when using or producing G-code.
 Always run the simulator on the G-code whenever you make changes to
 it. While running the simulator, watch for these things in particular:
 
-  1. The spindle is on when it should be (and only when it should be).
+1) The spindle is on when it should be (and only when it should be).
 
-  2. Watch the spindle speed and make sure it is on whenever the tool is
+2) Watch the spindle speed and make sure it is on whenever the tool is
   close to the stock. It should almost always be spinning near the stock.
 
-  3. Watch the tool length and make sure it is set as early as
+3) Watch the tool length and make sure it is set as early as
   possible. Positioning the spindle anywhere near the stock is a no-no
   without an active tool length set (unless you are absolutely sure
   there will never be a tool in the spindle).
 
-  4. Step through and make sure the tool is never going to collide with
+4) Step through and make sure the tool is never going to collide with
   the fixture. Or the stock (unless cutting, of course). Watch your Z
   values and make sure it never goes too far down.
 
@@ -76,62 +76,59 @@ think our Tormach model is here, so I use the 1100M.
 
 From here, we need to set up the machine.
 
-1. Reset.
+1) Reset.
 
-2. Reference all axes. Do Z first just to build up the habit.
+2) Reference all axes. Do Z first just to build up the habit.
   
-3. Click the "Offsets" tab and scroll down to 293 and 294.
+3) Click the "Offsets" tab and scroll down to 293 and 294.
   
-4. Now we enter tool information.
+4) Now we enter tool information.
   
--  1. Click next to the 293 a couple times, and you should be able to enter a name. It doesn't really matter. I use "cb" since this is
-the counterboring tool. After you press Enter, you will get to
-the diameter field.
+    a) Click next to the 293 a couple times, and you should be able to enter a name. It doesn't really matter. I use "cb" since this is the counterboring tool. After you press Enter, you will get to the diameter field.
   
-- 2. Enter 0.375 as the diameter.
+    b) Enter 0.375 as the diameter.
   
-- 3. Enter a length. It doesn't matter much, just make it
+    c) Enter a length. It doesn't matter much, just make it
   reasonable. I choose something in the 3-5 inch range.
   
-- 4. Now do the same process for 294. The diameter should be smaller, say 0.25.
+   d) Now do the same process for 294. The diameter should be smaller, say 0.25.
   
-5. If you do not set up the automatic tool changer (ATC), the
+5) If you do not set up the automatic tool changer (ATC), the
    simulator will prompt for tool changes, just like on the machine. If
    you want to use the tool changer, follow these steps:
   
-- 1. Click the "Settings" tab.
+   a) Click the "Settings" tab.
   
-- 2. Click next to "ATC".
+   b) Click next to "ATC".
   
-- 3. Now go to the "ATC" tab that just sprang into being.
+   c) Now go to the "ATC" tab that just sprang into being.
   
-- 4. Enter "293" in the top left box and click "Insert". A "293"
+   d) Enter "293" in the top left box and click "Insert". A "293"
   should appear on the right of the tool changer diagram. If it
   happens to be an asterisk, that just means that the tool is
   already loaded on the spindle.
   
-- 5. Click "Tray Fwd".
+   e) Click "Tray Fwd".
   
-- 6. Now insert tool 294.
+   f) Now insert tool 294.
   
-- 7. Go to the the main screen and enter "G53 G0 Z-2" in the MDI
+   g) Go to the the main screen and enter "G53 G0 Z-2" in the MDI
   box. Wait for it to position.
   
-- 8. Go back to the ATC tab and click "Set TC Pos".
+   h) Go back to the ATC tab and click "Set TC Pos".
   
 6. At this point you should be ready to load the file you
    uploaded. (You did, right?) This is a slightly different process than
    on the actual machine.
   
-- 1. Go to the "File" tab.
+   a) Go to the "File" tab.
   
-- 2. If you don't see your file in the middle file browser, you may
-  need to click the circular arrow to refresh the list. You will need
-  to do this whenever you upload a new file as well.
+   b) If you don't see your file in the middle file browser, you may
+  need to click the circular arrow to refresh the list. You will need to do this whenever you upload a new file as well.
   
-- 3. Now copy the file to the left.
+   c) Now copy the file to the left.
   
-- 4. Select it and click "Load G-code" or just double click on the
+   d) Select it and click "Load G-code" or just double click on the
   file name.
   
 7. You should now be in the main tab with your file loaded and ready
