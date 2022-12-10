@@ -1,4 +1,4 @@
-# Words Of Warning
+# Words of Warning
 
 Observe good practices when using or producing G-code.
 
@@ -175,7 +175,7 @@ example. Different machines will also interpret some commands somewhat
 differently. This document is written with regards to the Tormach and
 PathPilot.
 
-## Definitions, syntax
+## Definitions, Syntax
 
 ### Comments
 
@@ -212,7 +212,7 @@ Y-1
 
 This moves to X3 and then moves to Y-1 (two different moves).
 
-## Coordinate systems
+## Coordinate Systems
 
 There is a machine coordinate system, which is always the same. For
 the Tormach, X0 Y0 Z0 is up, left, and back.
@@ -476,13 +476,34 @@ End any current canned cycle.
 Simple drill (no pecking). Do the first drill at the current position.
 Any coordinates on later blocks are new holes. The last specified feed
 rate is used. Z sets the final Z position. Before the actual drilling
-starts, there is a rapid move to the Z position specified by R. See
-G83 peck drill example.
+starts, there is a rapid move to the Z position specified by R.
 
 Usually you will have the tool pretty far above where the hole will
 be, because it just moved there from a different X and Y with good
 clearance. The R allows a rapid move down towards the stock, so that
 drilling (at a lower feed rate) can start much closer to the stock.
+
+Example:
+
+G98 F6.5
+G0 Z1
+G0 X1 Y-0.5
+G81 Z-1 R0.2
+G80
+
+Set the option to return to original Z (see G98) and set feed rate.
+Move above the stock 1 inch for clearance. Move to X1 Y-0.5. Do the
+canned cycle: rapid move to Z0.2, move at 6.5 in/min to Z-1, return
+to Z1 (via G98). End the canned cycles.
+
+This is roughly equivalent to the above, without using a canned cycle:
+
+F6.5
+G0 Z1
+G0 X1 Y-0.5
+G0 Z0.2
+G1 Z-1
+G0 Z1
 
 #### G83 Z? R? Q?
 
