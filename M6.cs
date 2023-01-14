@@ -12,32 +12,6 @@
 
 // Coordinate measurements are in millimeters
 
-/*
-Keep original code for bits 1-10
-
-Do we need to do some pneumatic engagement?
-
-If new bit is 11 - 48:
-    If old bit is 1 - 10:
-        - Put the old bit back into the rack
-        - Go to park position
-        - Prompt user to put in new bit
-        - Make sure pneumatic is closed <- check on this with Mr S
-    Else old bit is 11 - 48:
-        - Go to park position
-        - Prompt the user to remove the old bit
-        - Make sure pneumatic chuck is opened for next bit <- check on this with Mr S
-        - Prompt user to put in new bit
-Else if new bit is 1 - 10:
-    If old bit is 1 - 10:
-        - Put the old bit back into the rack
-        - Get new bit from the rack
-    Else if old bit is 11 - 48:
-        - Go to parking spot
-        - Prompt user to remove old bit
-        - Get new bit from rack
-        - Make sure pneumatic is closed <- check on this with Mr S
-*/
 
 // Port definitions
 const int ChuckOpenPort = 1;
@@ -108,8 +82,11 @@ ToolY[10] = BaseY + 9 * PitchY + 0.0; // Tool10 Y position
 // Get tool change parameters
 const int NewTool = exec.Getnewtool();
 const int CurrentTool = exec.Getcurrenttool();
+
+
 int TimeToWait = 0;
 
+// Make sure the new tool is valid
 if (NewTool == CurrentTool) // Same tool was selected, so do nothing
 {
   MessageBox.Show("Tool change failed, same tool was selected!");
@@ -134,6 +111,7 @@ if (!exec.GetLED(56) || !exec.GetLED(57) || !exec.GetLED(58))
   return;
 }
 
+// Save the current machine position
 double Xoriginalpos = exec.GetXmachpos();
 double Yoriginalpos = exec.GetYmachpos();
 
