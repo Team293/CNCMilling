@@ -12,7 +12,6 @@
 
 // Coordinate measurements are in millimeters
 
-
 // Port definitions
 const int ChuckOpenPort = 1;
 const int ChuckOpenPin = 14;
