@@ -96,7 +96,7 @@ if (NewTool == -1) // If new tool number is -1, it means a missing T code
   MessageBox.Show("Tool change failed, T code is missing!");
   return;
 }
-else if(NewTool < 1 || NewTool > MaxTotalTool) // Tool number is out of range
+else if((NewTool < 1) || (NewTool > MaxTotalTool)) // Tool number is out of range
 {
   MessageBox.Show("Tool change to " + NewTool + " failed, new tool number is out of range! (Min: 1, Max: " + MaxTotalTool + ")");
   return;
