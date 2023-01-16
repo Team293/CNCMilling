@@ -46,7 +46,7 @@ const double BaseY = 2409.3; // Tool1 Y base position
 
 const double ParkX = 597.115; // Park X position
 const double ParkY = -2279.7625; // Park Y position
-const double ParkZ = 0; // Park Z position
+const double ParkZ = SafeZ; // Park Z position
 
 
 // Tool index 0 is NOT used and the array is declared one larger than required
