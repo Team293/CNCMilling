@@ -44,8 +44,8 @@ const double PitchY = 0.0;
 const double BaseX = 23.925; // Tool1 X base position
 const double BaseY = 2409.3; // Tool1 Y base position
 
-const double ParkX = 597.115; // Park X position
-const double ParkY = -2279.7625; // Park Y position
+const double ParkX = 550; // Park X position
+const double ParkY = 100; // Park Y position
 const double ParkZ = SafeZ; // Park Z position
 
 
