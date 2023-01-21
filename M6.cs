@@ -44,7 +44,7 @@ const double PitchY = 0.0;
 const double BaseX = 23.925; // Tool1 X base position
 const double BaseY = 2409.3; // Tool1 Y base position
 
-const double ParkX = 550; // Park X position
+const double ParkX = 450; // Park X position
 const double ParkY = 100; // Park Y position
 const double ParkZ = SafeZ; // Park Z position
 
@@ -79,8 +79,8 @@ ToolX[10] = BaseX + 9 * PitchX + 0.0; // Tool10 X position
 ToolY[10] = BaseY + 9 * PitchY + 0.0; // Tool10 Y position
 
 // Get tool change parameters
-const int NewTool = exec.Getnewtool();
-const int CurrentTool = exec.Getcurrenttool();
+int NewTool = exec.Getnewtool();
+int CurrentTool = exec.Getcurrenttool();
 
 
 int TimeToWait = 0;
@@ -88,7 +88,7 @@ int TimeToWait = 0;
 // Make sure the new tool is valid
 if (NewTool == CurrentTool) // Same tool was selected, so do nothing
 {
-  MessageBox.Show("Tool change failed, same tool was selected!");
+  // MessageBox.Show("Tool change failed, same tool was selected!");
   return;
 }
 if (NewTool == -1) // If new tool number is -1, it means a missing T code
@@ -245,6 +245,10 @@ if (NewTool <= 10)
   // Move to new tool position on XY plane
   exec.Code("G0 G53 X" + ToolX[NewTool] + " Y" + ToolY[NewTool]);
   while(exec.IsMoving()){}
+
+  exec.Setoutpin( RackOpenPort, RackOpenPin); // Activate tool rack
+  exec.Wait( WaitForRack); // Wait in msec
+
   // Move Z axis down near tool holder level
   exec.Code("G0 G53 Z" + (ZToolRelease + ZToolEngageOffset));
 
