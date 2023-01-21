@@ -10,6 +10,10 @@
 table {
     border-collapse: collapse;
 }
+table.doc {
+    border: 1px solid black;
+    margin: 10px 0px 10px 0px;
+}
 td {
     vertical-align: top;
     text-align: left;
@@ -20,9 +24,20 @@ td.note {
     font-size: 11px;
     font-weight: bold;
 }
+td.doc {
+    white-space: normal;
+    padding: 0px 10px 0px 10px;
+}
 th {
     text-align: left;
     font-size: 12px;
+}
+div {
+    width: 500px;
+    margin: auto;
+}
+textarea {
+    width: 500px;
 }
 </style>
 
@@ -36,13 +51,29 @@ th {
 //
 // Preserve the types. In particular, numbers must stay numbers! Changing
 // them to strings will break certain operations and result in bad gcode.
+//
+// Always set the WCS before any moves (aside from G28 (home) and G30).
+// If you must move before setting the WCS, use G53 and machine coordinates
+// with those moves, simply because we don't know what coordinate system
+// might be active.
+// 
+// Always load the tool before moving towards the stock!
 var machines = [
     {
         "Name" : "Tormach",
+// G17: XY plane for G2, G3
+// G20: imperial units
+// G90: absolute positioning
+// G40: cancel any cutter radius compensation
+// G49: cancel any tool length compensation
+// G64 P? Q?: movement accuracy tuning
+// G80: cancel any canned cycle
+// S0: spindle speed 0
+// M5: spindle off
         "HeaderGC" : "(( Initialize Tormach ))\nG17 G20 G90 G40 G49 G64 P0.001 Q0.0000 G80 S0 M5 (boilerplate)\n", // no movement in this section! (except G28 and G30 are ok)
-        "PostInitGC" : "G0 Z10\nG0 X0 Y0 (safe starting position, also simulator requires a move here)\n",   // performed after setting WCS offsets but before tool load
-        "FooterGC" : "(End)\nM5 S0\nG28 G91 Z0\nG28\nM30\n",    // possibly use G28 (home) instead of G30
-        "SafeRetractZ" : 1,                // used between operations (possible X/Y travel)
+        "PostInitGC" : "G0 Z10\nG0 X0 Y0 (safe starting position, also simulator may require a move here)\n",   // performed after setting WCS offsets but before tool load
+        "FooterGC" : "(End)\nM5 S0\nG28 G91 Z0\nG28\nM30\n",    // home Z first, then XY (could possibly use G30 instead)
+        "SafeRetractZ" : 1,                // used between operations (when rapid X/Y travel possible)
         "RapidToZ" : 0.2,                  // used at start of plunge operations //!! in params instead?
         "CannedEndGC" : "G80\n",
         "ToolChangeGC" : "G30\nT%ToolNumber% M6 G43 H%ToolNumber%\n",
@@ -53,9 +84,9 @@ var machines = [
         "CannedHoleCenterPrecedesOpGCode" : true,   // G98 then XY then G81 then XY then G80 (instead of G98 then G81 then XY then G80)
 // Work origin
         "WCSOffsetX" : 0.5,                // from workpiece stop (machine X0 is at right side of stop)
-        "WCSOffsetY" : -1.385,             // fixed vice jaw face position
-        "WCSOffsetZ" : -13.2861,           // bottom of fixture (top of spoilboard), adjusted by stock height
-        "SetWCSGC" : "G10 L2 P7 X%OffsetX% Y%OffsetY% Z%OffsetZ% (set 59.1 offsets)\nG59.1 (switch to WCS)\n",
+        "WCSOffsetY" : -1.395,             // fixed vice jaw face position
+        "WCSOffsetZ" : -13.387,            // bottom of fixture (top of spoilboard), this plus stock height = Z0
+        "SetWCSGC" : "(Using offsets for 59.1 stored on the machine)\n(For reference: G10 L2 P7 X%OffsetX% Y%OffsetY% Z%OffsetZ%) (set 59.1 offsets)\nG59.1 (switch to WCS)\n",
 // X stop offset values
         "MaxX" : 17,
         "XOffsets" : [ 0, 8, 16 ],   // must be in increasing order
@@ -68,42 +99,65 @@ var machines = [
 */
         "SpindleOnGC" : "G30 S%SpindleSpeed% M3 (spindle on and speed)\n",
         "SpindleOffGC" : "M5 (spindle off)\n",
-// Drilling
+// Drilling (from top of stock)
         "DrillToolNumber" : 294,
         "DrillSpindleSpeed" : 1074,        // RPM
         "DrillFeedRate" : 6.5,             // in/min
         "DrillCannedStartGC": "G90 G98 F%FeedRate% (return to original Z)\n",
         "DrillCannedOpGC" : "G83 Z-%StockHeight% R%RapidToZ% Q0.25 (peck drill)\n",
-// Counterboring
+// Counterboring (from top of stock to counterbore depth)
         "CounterboreToolNumber" : 293,
-        "CounterboreSpindleSpeed" : 3000,
-        "CounterboreFeedRate" : 6.5,
+        "CounterboreSpindleSpeed" : 3000,  // computed (4 flutes): 2037
+        "CounterboreFeedRate" : 6.5,       // computed (4 flutes): 8 (0.002 chip), 20.5 (0.005 chip), 32.5 (0.008 chip)
         "CounterboreCannedStartGC" : "G90 G98 F%FeedRate% (return to original Z)\n",
         "CounterboreCannedOpGC" : "G81 Z-%CounterboreDepth% R%RapidToZ% (standard drill)\n",
-// Drilling after counterboring
+// Centerdrilling (from top of stock)
+	"CenterdrillToolNumber" : 299,
+	"CenterdrillSpindleSpeed" : 1000,
+	"CenterdrillFeedRate" : 6.5,
+	"CenterdrillCannedStartGC" : "G90 G98 F%FeedRate% (return to original Z)\n",
+	"CenterdrillCannedOpGC" : "G81 Z-%CenterdrillDepth% R%RapidToZ% (standard drill)\n",
+// Drilling after counterboring (from counterbore depth to stock bottom)
         "CounterboredDrillToolNumber" : 294,
         "CounterboredDrillSpindleSpeed" : 1074,        // RPM
         "CounterboredDrillFeedRate" : 6.5,             // in/min
         "CounterboredDrillCannedStartGC": "G90 G98 F%FeedRate% (return to original Z)\n",
-        "CounterboredDrillCannedOpGC" : "G83 Z-%StockHeight% R%RapidToZ% Q0.25 (peck drill)\n", // RapidToZ will be close to counterbore depth
+        "CounterboredDrillCannedOpGC" : "G83 Z-%StockHeight% R%RapidToZ% Q0.25 (peck drill)\n", // RapidToZ will be relative to counterbore depth
+// Centerdrilling after counterboring (from counterbore depth to counterbore depth + center drill depth)
+	"CounterboredCenterdrillToolNumber" : 299,
+	"CounterboredCenterdrillSpindleSpeed" : 1000,
+	"CounterboredCenterdrillFeedRate" : 6.5,
+	"CounterboredCenterdrillCannedStartGC" : "G90 G98 F%FeedRate% (return to original Z)\n",
+	"CounterboredCenterdrillCannedOpGC" : "G81 Z-%CenterdrillDepth% R%RapidToZ% (standard drill)\n",  // RapidToZ will be relative to counterbore depth
 // Scoring
         "ScoreToolNumber" : 293,
-        "ScoreSpindleSpeed" : 3000,
-        "ScorePlungeFeedRate" : 6.5,
-        "ScoreFeedRate" : 8,
+	// Speeds and feeds in testing for 3/8" 2 flute carbide: 3000 RPM, 6.5 for plunge, 8 for slotting
+	// Computed for that bit and 0.005 chip size: 2037 RPM, 10 for plunge, 20 for slotting
+	// Computed for 3/8" 4 flute HSS and 0.005 chip size: 2037 RPM, 20.5 for plunge, 41 for slotting
+        "ScoreSpindleSpeed" : 1500,    // computed (4 flutes): 2037
+        "ScorePlungeFeedRate" : 6.5,   // computed (4 flutes): 8 (0.002 chip), 20.5 (0.005 chip), 32.5 (0.008 chip)
+        "ScoreFeedRate" : 10,          // computed (4 flutes): 16 (0.002 chip), 41 (0.005 chip), 65 (0.008 chip)
         "ScoreStartGC" : "G0 X%ScoreX% Y0.5\nZ%RapidToZ% (RapidToZ)\n",
         "ScoreGC" : "G1 Z-%ScoreDepth% F%PlungeRate%\nY-3.3 F%FeedRate%\n",
         "ScoreEndGC" : "",
+// Verify
+        "VerifyY" : -0.5,        // center y
+        "VerifyX" : 0.5,         // center x
+	"VerifyRapidToZ" : 0.5,  // rapid to this ABOVE VerifyZ
+	"VerifyFeedRate" : 6,
+	"VerifyZ" : 3.0,
 // Tools
 // NOTE: Tool diameters should be less than 0.5. Say under 0.45 for safety margin.
 // For a larger tool diameter, X0 will need to be changed for increased distance
 // from the first stop, otherwise the tool will collide with the stop.
-        "Tools" : { "293" : { "Diameter" : 0.375 },
-                    "294" : { "Diameter" : 0.375 } },
+        "Tools" : { "293" : { "Diameter" : 0.375 },      // counterbore
+                    "294" : { "Diameter" : 0.266 },      // drill
+		    "299" : { "Diameter" : 0.250 },      // locating drill
+		  },
     },
 ];
 
-// Eh.
+// Meh.
 //
 // Partly for efficiency, we define the list of accepted substitutions
 // for each entry in the machine table that accepts them.
@@ -116,8 +170,12 @@ var allowedSubstitutions = {
     "SpindleOnGC" : [ "SpindleSpeed" ],
     "DrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
     "DrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
+    "CenterdrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
+    "CenterdrillOpGC" : [ "StockHeight", "RapidToZ", "CenterdrillDepth" ],
     "CounterboredDrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
     "CounterboredDrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
+    "CounterboredCenterdrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
+    "CounterboredCenterdrillCannedOpGC" : [ "StockHeight", "RapidToZ", "CenterdrillDepth" ],
     "CounterboreCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
     "CounterboreCannedOpGC" : [ "CounterboreDepth", "RapidToZ", "SafeRetractZ" ],
     "ScoreStartGC" : [ "ScoreX", "RapidToZ", "FeedRate", "SafeRetractZ" ],
@@ -136,10 +194,12 @@ var currentSpindleSpeed = 0;
 // "Part", "Face", "HoleType", "StockLength", "StockHeight",
 // "OffsetX", "OffsetY".
 var params = {
-    "CounterboreDepth" : 0.33,
-    "ScoreDepth" : 0.05,
+    "CounterboreDepth" : 0.4,    // distance below Z0
+    "ScoreDepth" : 0.04,
+    "CenterdrillDepth" : 0.05,   // from Z0 or from counterbore depth
     "CutoffSeparation" : 0.5,
     "CutoffStockHeight" : 1.0,
+    "VerifyStockHeight" : 1.0
 };
 
 var options = {
@@ -403,6 +463,17 @@ function doScoring(job, xOffset) {
 //
 // This is useful because counterbores are really two operations
 // for each hole: counterbore and drill.
+//
+// The "op" variable is one of: "Drill", "Counterbore",
+// "CounterboredDrill", "Centerdrill", or "CounterboredCenterdrill".
+// 
+// The "op" variable is prepended to the various machine variables
+// to make look up for parameters for specific operations easy.
+// For example, the tool number for the Drill operation is
+// DrillToolNumber in the machine table. So for simple drills, op is
+// "Drill" and the parameter is op + "ToolNumber" == "DrillToolNumber".
+// (By adding this comment, I probably just made it more confusing
+// than it ever was.)
 function doGenerateHoleOp(op, holes, xOffset) {
     var gc;
     gc = "(( " + op + " ))\n";
@@ -411,17 +482,24 @@ function doGenerateHoleOp(op, holes, xOffset) {
     gc += "G0 Z" + contextValue("SafeRetractZ", null) + " (SafeRetractZ)\n";
     gc += contextValue(op + "CannedStartGC", { "FeedRate" : contextValue(op + "FeedRate", null) });
     var opStarted = false;
-/*
-  We should be sure that, at least when CannedHoleCenterPrecedesOpGCode is true,
-  the first XY is issued in G0 mode. If not (and this is not terrible,
-  just annoying), then a slow feed rate might be used. Since we have SafeRetractZ
-  ahead of this, and it is done in G0, it should be fine. Note that we should
-  not specify G0 for subsequent XY in the canned cycles.
-*/
+
+    /*
+      We should be sure that, at least when CannedHoleCenterPrecedesOpGCode is true,
+      the first XY is issued in G0 mode. If not (and this is not terrible,
+      just annoying), then a slow feed rate might be used. Since we have SafeRetractZ
+      ahead of this, and it is done in G0, it should be fine. Note that we should
+      not specify G0 for subsequent XY in the canned cycles.
+    */
+
     if (!contextValue("CannedHoleCenterPrecedesOpGCode", null)) {   //!! UNTESTED
         // any counterbored hole will be clear down to the counterbore depth
         if (op == "CounterboredDrill") {
             gc += contextValue(op + "CannedOpGC", { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1 });
+	} else if (op == "CounterboredCenterdrill") {
+            gc += contextValue(op + "CannedOpGC",
+			       { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1,
+				 "CenterdrillDepth" : contextValue("CounterboreDepth", null) + contextValue("CenterdrillDepth", null)
+			       });
         } else {
             gc += contextValue(op + "CannedOpGC", null);
         }
@@ -442,6 +520,11 @@ function doGenerateHoleOp(op, holes, xOffset) {
             // any counterbored hole will be clear down to the counterbore depth
             if (op == "CounterboredDrill") {
                 gc += contextValue(op + "CannedOpGC", { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1 });
+	    } else if (op == "CounterboredCenterdrill") {
+                gc += contextValue(op + "CannedOpGC",
+				   { "RapidToZ" : -contextValue("CounterboreDepth", null) + 0.1,
+				     "CenterdrillDepth" : contextValue("CounterboreDepth", null) + contextValue("CenterdrillDepth", null)
+				   });
             } else {
                 gc += contextValue(op + "CannedOpGC", null);
             }
@@ -522,6 +605,14 @@ function doBSGenerate() {
                 gc += nc;
                 // we must follow the counterbore with a through drill
                 // this is optimized slightly because we know the counterbore has cleared stock down to the counterbore depth
+		// but we must precede the through drill with a center/locating drill
+		// lest the bit wander too far off center
+                nc = doGenerateHoleOp("CounterboredCenterdrill", offsetHoles, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
                 nc = doGenerateHoleOp("CounterboredDrill", offsetHoles, machine["XOffsets"][o]);
                 if (nc == null) {
                     el.innerHTML = "errors";
@@ -529,6 +620,13 @@ function doBSGenerate() {
                 }
                 gc += nc;
             } else if (params["HoleType"] == "Simple") {
+		// start with a center/locating drill
+                nc = doGenerateHoleOp("Centerdrill", offsetHoles, machine["XOffsets"][o]);
+                if (nc == null) {
+                    el.innerHTML = "errors";
+                    return;
+                }
+                gc += nc;
                 nc = doGenerateHoleOp("Drill", offsetHoles, machine["XOffsets"][o]);
                 if (nc == null) {
                     el.innerHTML = "errors";
@@ -608,6 +706,67 @@ function doCOGenerate() {
         }
         gc += nc;
     }
+
+    gc += contextValue("FooterGC", null);
+    el.innerHTML = gc;
+}
+
+// Generate daily calibration/check-up gcode.
+function doVerifyGenerate() {
+    var el = getEl("gCode");
+    var sh = contextValue("VerifyStockHeight", null);
+
+    if ((!isNumber(sh)) || (sh = Number(sh), (sh != 1.0))) {
+        alert("Only 1 inch high stock is supported");
+        el.innerHTML = "errors";
+        return;
+    }
+
+    // header stuff
+    var gc = "(Calibration)\n";
+    gc += "(Extrusion height: " + sh + ")\n";
+    gc += contextValue("HeaderGC", null);
+    gc += contextValue("SetWCSGC", {
+        "OffsetX" : contextValue("WCSOffsetX", null),
+        "OffsetY" : contextValue("WCSOffsetY", null),
+        "OffsetZ" : Number(contextValue("WCSOffsetZ", null)) + sh });
+    gc += contextValue("PostInitGC", null);
+
+    gc += "M00 (Check stored 59.1 coordinates, then load 1x1 inch stock)\n";
+
+//    gc += "M00 (Insert 1x1 inch stock at first X stop)\n";
+
+    var x = contextValue("VerifyX", null);
+    var y = contextValue("VerifyY", null);
+    var rapidZ = contextValue("VerifyZ", null) + contextValue("VerifyRapidToZ", null);
+    gc += checkChangeTool(contextValue("DrillToolNumber", null));
+    gc += "G0 X" + x + " Y" + y + "\n";
+    gc += "G0 Z" + rapidZ + "\n";
+    gc += "G1 Z" + contextValue("VerifyZ", null) + " F" + contextValue("VerifyFeedRate", null) + "\n";
+    gc += "M00 (Drill bit should be at X" + x + " Y" + y + " Z" + contextValue("VerifyZ", null) + ")\n";
+    gc += checkChangeTool(contextValue("CounterboreToolNumber", null));
+    gc += "G0 X" + x + " Y" + y + "\n";
+    gc += "G0 Z" + rapidZ + "\n";
+    gc += "G1 Z" + contextValue("VerifyZ", null) + " F" + contextValue("VerifyFeedRate", null) + "\n";
+    gc += "M00 (CB tool should be at X" + x + " Y" + y + " Z" + contextValue("VerifyZ", null) + ")\n";
+    gc += checkChangeTool(contextValue("CenterdrillToolNumber", null));
+    gc += "G0 X" + x + " Y" + y + "\n";
+    gc += "G0 Z" + rapidZ + "\n";
+    gc += "G1 Z" + contextValue("VerifyZ", null) + " F" + contextValue("VerifyFeedRate", null) + "\n";
+    gc += "M00 (drill locator tool should be at X" + x + " Y" + y + " Z" + contextValue("VerifyZ", null) + ")\n";
+
+/*
+    for (var num in machine["Tools"]) {
+        var r = machine["Tools"][num]["Diameter"] / 2.0;
+	var x = contextValue("VerifyX", null) + r;
+	var y = contextValue("VerifyY", null) + r;
+	gc += checkChangeTool(num);
+	gc += "G0 X" + x + " Y" + y + "\n";
+	gc += "G0 Z" + rapidZ + "\n";
+	gc += "G1 Z" + contextValue("VerifyZ", null) + " F" + contextValue("VerifyFeedRate", null) + "\n";
+	gc += "M00 (Check with 1-2-3 block, then remove block)\n";
+    }
+*/
 
     gc += contextValue("FooterGC", null);
     el.innerHTML = gc;
@@ -729,7 +888,7 @@ function doGenerate() {
     }
     if (form == "BoreAndScore") doBSGenerate();
     else if (form == "Cutoff") doCOGenerate();
-    else if (form == "Verify") doVerifyGenerate();
+    else if (form == "Calibrate") doVerifyGenerate();
 }
 
 // Clear input and output fields, but leave debug values and other
@@ -741,7 +900,7 @@ function clearInputOutput() {
     } else if (form == "Cutoff") {
         getEl("cutoffLength").value = "";
         getEl("cutoffNumber").value = "";
-    } else if (form == "Verify") {
+    } else if (form == "Calibrate") {
         /*! UNIMPLEMENTED !*/
     }
 }
@@ -778,11 +937,11 @@ function populateMachineList() {
 // Load the input fields with the sample values.
 function loadTestInput() {
     if (form == "BoreAndScore") {
-        getEl("holeDescText").value = "(Part1)\n(Face1)\n(Counterbore)\n0\n0\n30\n1\nX1Y-0.5\nX10Y-0.5\nX17.5Y-0.4\nX23.75Y-0.75\n";
+        getEl("holeDescText").value = "(Part1)\n(Face1)\n(Counterbore)\n0\n0\n30\n1\nX1Y-0.5\nX10Y-0.5\nX17.5Y-0.5\nX23.75Y-0.5\n";
     } else if (form == "Cutoff") {
         getEl("cutoffLength").value = 1;
         getEl("cutoffNumber").value = 3;
-    } else if (form == "Verify") {
+    } else if (form == "Calibrate") {
         /*! UNIMPLEMENTED !*/
     }
     clearGCode();
@@ -812,29 +971,33 @@ function updateOperationSelect() {
     if (op == "BoreAndScore") {
         getEl("boreAndScoreDiv").hidden = false;
         getEl("cutoffDiv").hidden = true;
-        getEl("verifyDiv").hidden = true;
+        getEl("calibrateDiv").hidden = true;
         getEl("commonDiv").hidden = false;
+	getEl("loadTestInputButton").hidden = false;
         form = "BoreAndScore";
         getEl("saveFileNameText").value = "293ExtrusionHoleGCode.txt";
     } else if (op == "Cutoff") {
         getEl("boreAndScoreDiv").hidden = true;
         getEl("cutoffDiv").hidden = false;
-        getEl("verifyDiv").hidden = true;
+        getEl("calibrateDiv").hidden = true;
         getEl("commonDiv").hidden = false;
+	getEl("loadTestInputButton").hidden = false;
         form = "Cutoff";
         getEl("saveFileNameText").value = "293ExtrusionCutoffGCode.txt";
-    } else if (op == "Verify") {
+    } else if (op == "Calibrate") {
         getEl("boreAndScoreDiv").hidden = true;
         getEl("cutoffDiv").hidden = true;
-        getEl("verifyDiv").hidden = false;
+        getEl("calibrateDiv").hidden = false;
         getEl("commonDiv").hidden = false;
-        form = "Verify";
-        getEl("saveFileNameText").value = "293ExtrusionCheckupGCode.txt";
+	getEl("loadTestInputButton").hidden = true;
+        form = "Calibrate";
+        getEl("saveFileNameText").value = "293CalibrationGCode.txt";
     } else {
         getEl("boreAndScoreDiv").hidden = true;
         getEl("cutoffDiv").hidden = true;
-        getEl("verifyDiv").hidden = true;
+        getEl("calibrateDiv").hidden = true;
         getEl("commonDiv").hidden = true;
+	getEl("loadTestInputButton").hidden = true;
         form = null;
         getEl("saveFileNameText").value = "";
     }
@@ -851,14 +1014,26 @@ function clearGCode() {
      selected, different <div> sections are made visible/invisible. -->
 
 <form id=gcodeForm>
+<div>
+<center>
 <table>
-<tr><td><hr style="width:100%;color:gray;text-align:left;margin-left:0"></td></tr>
-<tr><td><font size=2>Team 293 (SPIKE) G-code generator. Last updated Dec 8, 2022.</font></td></tr>
-<tr><td><hr style="width:100%;color:gray;text-align:left;margin-left:0"></td></tr>
+<tr><td><hr style="width:100%;color:gray;margin-left:0"></td></tr>
+<tr><td><font size=2>Team 293 (SPIKE) G-code generator. Last updated Jan 5, 2023.</font></td></tr>
+<tr><td><hr style="width:100%;color:gray;margin-left:0"></td></tr>
 </table>
 <label for=machineSelect>Machine:</label>&nbsp;<select id=machineSelect name=machineSelect onchange=updateMachineSelect() disabled></select>
-<label for=operationSelect>Operation:</label>&nbsp;<select id=operationSelect name=operationSelect onchange=updateOperationSelect() autofocus><option value="Choose" selected>-- Choose --</option><option value="BoreAndScore">Bore and Score</option><option value="Cutoff">Cut-off Lengths</option><option value="Verify">Daily Check-up</option></select>
+<label for=operationSelect>Operation:</label>&nbsp;<select id=operationSelect name=operationSelect onchange=updateOperationSelect() autofocus><option value="Choose" selected>-- Choose --</option><option value="Calibrate">Calibration</option><option value="BoreAndScore">Bore and Score</option><option value="Cutoff">Cut-off Lengths</option></select>
+</center>
+</div>
 <div id=boreAndScoreDiv hidden>
+<table class=doc>
+  <tr><td colspan=2 class=doc>
+  <p>Use this tool along with the custom featurescript in OnShape. Holes will be drilled and counterbored.
+  <p>Optionally, the stock will also be scored on both ends to facilitate cutting to length on the chop saw.
+  <p>This tool makes use of the X stops in the fixture to machine longer lengths.
+  <p><b>The 59.1 coordinate offsets must be set first.</b>
+  </td></tr>
+</table>
 <table>
 <tr>
 <td><b>Hole parameters from OnShape:</b><br>
@@ -868,7 +1043,7 @@ function clearGCode() {
 <td style="padding: 0px 0px 0px 10px">
 Hole parameters follow this format:<br><br>
 <table id=exampleTable cellpadding=3>
-  <tr><th></th><th>Example</th></tr>
+  <tr><th>Line content</th><th>Example</th></tr>
   <tr><td>Part name</td><td>(Part1)</td></tr>
   <tr><td>Face name</td><td>(Top)</td></tr>
   <tr><td>Hole type</td><td>(Counterbore)</td></tr>
@@ -882,6 +1057,7 @@ Hole parameters follow this format:<br><br>
   <tr><td></td></tr>
   <tr><td colspan=2>(*) unused</td></tr>
   <tr><td></td></tr>
+  <tr><td colspan=2 class=note>Within the G-code, the WCS is:</td></tr>
   <tr><td colspan=2 class=note>X0 at first workpiece stop + 0.5</td></tr>
   <tr><td colspan=2 class=note>Y0 at face of fixed jaw of vice</td></tr>
   <tr><td colspan=2 class=note>Z0 will be stock top</td></tr>
@@ -891,6 +1067,12 @@ Hole parameters follow this format:<br><br>
 </table>
 </div>
 <div id=cutoffDiv hidden>
+<table class=doc>
+  <tr><td class=doc>
+  <p>Use this tool to generate g-Code for cutting multiple pieces of the same length. The stock will be scored to facilitate cutting to length on the chop saw.
+  <p><b>The 59.1 coordinate offsets must be set first.</b>
+  </td></tr>
+</table>
 <table>
 <tr><td><b>Enter the length of cut-off pieces and the number of pieces:</b></td></tr>
 <tr><td>
@@ -899,7 +1081,19 @@ Hole parameters follow this format:<br><br>
 <tr><td><b>1 inch square extrusion (1010) only!</b></td></tr>
 </table>
 </div>
-<div id=verifyDiv hidden>
+<div id=calibrateDiv hidden>
+<table class=doc>
+  <tr><td class=doc>
+  <p>Use this tool to generate G-code to check positioning and tool lengths and to set the stored G59.1 coordinates.
+  <p>Each tool will be positioned 3 inches above the stock. After
+  positioning, use a 1-2-3 block centered on the top of the stock to verify position and tool length. <b>Remove the block before continuing.</b>
+  <p>If the positioning needs adjustment, change the G59.1 coordinates in PathPilot and try again. You can remove the block, jog Z in specific amounts, replacing the block each time until you get it close. Then do the math to update the offsets in PathPilot.
+  <p><b>The 59.1 offsets must first be set to approximate values.</b>
+  </td></tr>
+</table>
+<table>
+<tr><td><b>1 inch square extrusion (1010) only!</b></td></tr>
+</table>
 </div>
 <div id=commonDiv hidden>
 <table>
