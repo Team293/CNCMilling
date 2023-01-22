@@ -43,13 +43,18 @@ saw. For example, one could enter a length of 3 and a number of 4, and
 it would make scoring marks for cutting out four 3-inch lengths of
 extrusion.
 
-### Daily Check-up
+### Daily Calibration
 
-TBD. Since the mill is in a shared shop environment, it's probably
+Since the mill is in a shared shop environment, it's probably
 wise to have some safe way of verifying the setup at the start of each
-shop session. This would ideally check the WCS origin at least.
-Fixture mounting, tool lengths, and a tool changer test are other
-possibilities.
+shop session. This would ideally check the WCS origin and tool lengths.
+
+We now have a simple procedure for doing this though one of the forms.
+The G-code that is produced loads each tool, in turn, positioning the
+business end at Z3 (3 inches above the stock). With 1x1 stock loaded,
+a 1-2-3 block can be used to verify the tool is at Z3 (or, ideally,
+just very slightly above). If the block's edges are flush with the
+stock, then the tool should also be centered on the middle hole.
 
 ## The Fixture
 
@@ -122,7 +127,7 @@ correctly.
 Drills go all the way through the stock. Counterbores are via plunge
 with a square endmill (which may also be used for the scoring), cut to
 a fixed depth which is defined in the "params" dictionary
-below.
+below. Drills are preceded by a centering tool to prevent bit wandering.
 
 In addition, two score marks can be machined at X = 0 and X = stock length
 (minus or plus the tool radius). The part can then be cut at these
@@ -130,8 +135,8 @@ marks (along the appropriate edge depending on which end) in the chop saw.
 
 Limitations:
 
-  1) The max width supported for the stock is 2 inches. There is a
-  hardcoded value for the end Y in ScoreGC of 2.5. This could safely be
+  1) The max width supported for the stock is 3 inches. There is a
+  hardcoded value for the end Y in ScoreGC of -3.5. This could safely be
   increased some, but, since it's a hardcoded value (and we are not
   given the stock width), the scoring cut will always be that value,
   which wastes time for thinner stock.
@@ -145,6 +150,8 @@ Limitations:
   4) Counterbore depth is also hardcoded. That is, the counterbore will
   always be cut to the same depth below the top of the stock. This
   could be more flexible if we get the counterbore depth from CAD.
+  
+  5) Tool paths are not very well optimized.
 
 The general order in the G-code goes as follows for Bore and Score:
 
@@ -163,7 +170,7 @@ then drills.
   For each offset:
     Do scoring:
       Change to scoring tool if needed
-      Set spindle speed and turn on spindle if needed
+      Set spindle speed (if needed) and turn on spindle
       SafeRetractZ (may move down to SafeRetractZ from G30 height)
       ScoreStartGC (with X adjusted by tool radius)
       ScoreGC
@@ -176,19 +183,27 @@ then drills.
       CounterboreCannedStartGC
       For each hole:
         X and Y for canned operation (X adjusted for stock offset)
-        If CannedHoleCenterPrecedsOpGCode:
-          CounterboreCannedOpGC
+        CounterboreCannedOpGC
       CannedEndGC
       SafeRetractZ
-    Do drills:
+    Do centering of counterbored holes:
+      Change to centering tool if needed
+      Set spindle speed (if needed) and turn on spindle
+      SafeRetractZ
+      CounterboredCenterdrillCannedStartGC
+      For each hole:
+        X and Y for canned operation (X adjusted for stock offset)
+	CounterboredCenterdrillCannedOpGC
+      CannedEndGC
+      SafeRetractZ
+    Do drills of counterbored holes:
       Change to drill tool if needed
       Set spindle speed and turn on spindle if needed
       SafeRetractZ (may move down to SafeRetractZ from G30 height)
-      DrillCannedStartGC
+      CounterboredDrillCannedStartGC
       For each hole:
         X and Y for canned operation (X adjusted for stock offset)
-        If CannedHoleCenterPrecedsOpGCode:
-          DrillCannedOpGC
+        CounterboredDrillCannedOpGC
       CannedEndGC
       SafeRetractZ
   FooterGC
@@ -250,22 +265,12 @@ The general order in the G-code goes as follows for Cut-off:
       ScoreEndGC
   FooterGC
 </pre>
-### Daily Check-up
+### Daily Calibration
 
-  One option discussed is to have a "tool" made of a safe and
-  dimensionally stable material (plastic). The tool would have a 1"
-  diameter tip. This operation would move the tip of the tool to just
-  above the top of a piece of 1" stock (without turning on the
-  spindle). The operator could then feel that the edges of the stock
-  align with the edges of the tool tip and check the gap between the
-  tool and the stock. This would verify Y and Z pretty well.
-
-  In this scenario, the tool tip would come right up against the first
-  X stop, if the tool is moved to X0. This would be good for verifying
-  alignment but bad if the alignment is off. We should probably have
-  it move slightly to the right of the stop, with the operator
-  checking the gap.
-
+  This does not require any input. Clicking "Generate" will return
+  a simple script to perform the "calibration" steps. This process
+  is already described pretty well above.
+ 
 ## Design Principles
 
 There are a few design principles that you should be aware of. Please
