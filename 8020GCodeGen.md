@@ -351,8 +351,8 @@ convert to a string, except maybe for dictionary keys). For example,
 With the value of the form input SomeFormInputID being 13, for
 example, this will result in gc = "G0 X1213", which is likely not
 correct. This happens because the form input value is typically
-(always?) a string, so x is assigned "12" + "13" which is "1213".  If
-there is any string in your expression, javascript will convert all
+(always?) a string, so x is assigned "12" + "13" which is "1213".
+If there is any string in your expression, javascript will convert all
 numbers into strings, then do string concatenation. Even though I'm
 aware of this, I still get foiled by it occasionally.
 
@@ -370,3 +370,47 @@ one in some contexts).
 
 Also, just in case you are expecting javascript to be like java:
 "Java is to javascript as car is to carpet."
+
+## Specific areas for improvement
+
+Should anyone feel up to it, I have some ideas for improving the code
+and (in some cases) operation. None of these are particularly important.
+Though #2 might be. Feel free to add other things to this list.
+
+1. In the machine definition, for tools, have a reference to a defined
+tool type. For example: "4 flute HSS 3/8" end mill". Then have feeds
+and speeds for operations under that tool definition, including
+slotting and plunging at a minimum. For boring, scoring, etc., have
+tool number and type of operation. Then look up speeds and feeds by
+tool number, tool type, and operation type. Other variations on this
+could be good, too. It would just be a little slicker, allow
+different tools to be swapped in easily (swap out the aforementioned end mill
+for a 2 flute carbide 3/8" end mill, for example), and also serve
+as a database for the all-important speeds and feeds for different tools,
+which could save considerable time. Those numbers could also just be
+stored in comments, but that's not quite as slick.
+
+2. Optimize stop usage. In particular, avoid operations on long parts
+in areas that stick out without any support. The best example is a piece
+that is not quite long enough to reach the right support. The current
+version may start this piece at the first left stop and have it stick out
+quite a lot from the vice. It would flex and vibrate more than it needs to
+when machining that far end. This part could instead be moved to a different
+stop to the left and held in the vice without much stickout, for those operations.
+It shouldn't be too hard to add, since the code simply creates jobs and
+assigns each of them an offset. So one could detect these jobs and add them
+to the most appropriate offset number.
+
+3. Optimize movement. There are some extra moves. Some of them are
+artifacts of algorithmic generation: "I always want to be sure to end
+every operation at a safe Z."; then, "I always want to be sure we are at
+a safe Z before rapid moves in the X-Y plane." Just to illustrate what
+I mean by that. There might be ways to reduce those. Some extra movements
+(via G30 mainly) were introduced when we had problems with the spindle sometimes not
+spinning. Because of that, it is designed to start the spindle
+spinning while away from the stock (potentially far above it)
+before moving towards the stock. We don't seem to have that problem now.
+The more conventional approach would be to move the tool to a good
+clearance Z, say 1" above the stock, then start it spinning. It would
+also not move far above the stock just to turn the spindle
+on.
