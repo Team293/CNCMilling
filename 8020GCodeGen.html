@@ -108,7 +108,7 @@ var machines = [
 // Counterboring (from top of stock to counterbore depth)
         "CounterboreToolNumber" : 293,
         "CounterboreSpindleSpeed" : 3000,  // computed (4 flutes): 2037
-        "CounterboreFeedRate" : 2.5,       // computed (4 flutes): 8 (0.002 chip), 20.5 (0.005 chip), 32.5 (0.008 chip)
+        "CounterboreFeedRate" : 6.5,       // computed (4 flutes): 8 (0.002 chip), 20.5 (0.005 chip), 32.5 (0.008 chip)
         "CounterboreCannedStartGC" : "G90 G98 F%FeedRate% (return to original Z)\n",
         "CounterboreCannedOpGC" : "G81 Z-%CounterboreDepth% R%RapidToZ% (standard drill)\n",
 // Centerdrilling (from top of stock)
@@ -195,8 +195,8 @@ var currentSpindleSpeed = 0;
 // "OffsetX", "OffsetY".
 var params = {
     "CounterboreDepth" : 0.4,    // distance below Z0
-    "ScoreDepth" : 0.05,
-    "CenterdrillDepth" : 0.04,   // from Z0 or from counterbore depth
+    "ScoreDepth" : 0.04,
+    "CenterdrillDepth" : 0.05,   // from Z0 or from counterbore depth
     "CutoffSeparation" : 0.5,
     "CutoffStockHeight" : 1.0,
     "VerifyStockHeight" : 1.0
@@ -753,7 +753,7 @@ function doVerifyGenerate() {
     gc += "G0 X" + x + " Y" + y + "\n";
     gc += "G0 Z" + rapidZ + "\n";
     gc += "G1 Z" + contextValue("VerifyZ", null) + " F" + contextValue("VerifyFeedRate", null) + "\n";
-    gc += "M00 (Spotting tool should be at X" + x + " Y" + y + " Z" + contextValue("VerifyZ", null) + ")\n";
+    gc += "M00 (drill locator tool should be at X" + x + " Y" + y + " Z" + contextValue("VerifyZ", null) + ")\n";
 
 /*
     for (var num in machine["Tools"]) {
@@ -1018,7 +1018,7 @@ function clearGCode() {
 <center>
 <table>
 <tr><td><hr style="width:100%;color:gray;margin-left:0"></td></tr>
-<tr><td><font size=2>Team 293 (SPIKE) G-code generator. Last updated Jan 21, 2023.</font></td></tr>
+<tr><td><font size=2>Team 293 (SPIKE) G-code generator. Last updated Jan 5, 2023.</font></td></tr>
 <tr><td><hr style="width:100%;color:gray;margin-left:0"></td></tr>
 </table>
 <label for=machineSelect>Machine:</label>&nbsp;<select id=machineSelect name=machineSelect onchange=updateMachineSelect() disabled></select>
