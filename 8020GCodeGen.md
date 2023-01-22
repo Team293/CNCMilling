@@ -367,3 +367,6 @@ conversion when first assigning to a variable. In this example, we all
 understand r as a radius, which is a number. There is no reason for r
 to ever be defined as a string (though it may need to be converted to
 one in some contexts).
+
+Also, just in case you are expecting javascript to be like java:
+"Java is to javascript as car is to carpet."
