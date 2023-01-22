@@ -9,7 +9,8 @@ machines.
 Whenever you make changes that might affect the G-code, be sure to
 always run the output through a simulator and carefully check each
 step. Make sure the tool length gets set and the spindle is turning
-when (and only when) it should be.
+when (and only when) it should be. Once it passes the simulator,
+it's also a good idea to do a step-through on the machine.
 
 Also, try not to have too many different versions floating around.
 
@@ -20,7 +21,7 @@ Also, try not to have too many different versions floating around.
 This script is intended to make generation of common 8020 extrusion
 parts simple and quick using a common fixture. There are three
 operations currently supported by this script ("Bore and Score",
-"Cut-off Lengths", and "Daily Check-up"). These operations are
+"Cut-off Lengths", and "Calibration"). These operations are
 combined into the same script to ensure that important parameters
 (such as the work origin) are always in sync.
 
