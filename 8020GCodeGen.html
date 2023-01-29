@@ -172,6 +172,7 @@ var allowedSubstitutions = {
     "DrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
     "CenterdrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
     "CenterdrillOpGC" : [ "StockHeight", "RapidToZ", "CenterdrillDepth" ],
+    "CenterdrillCannedOpGC" : [ "StockHeight", "RapidToZ", "CenterdrillDepth" ],
     "CounterboredDrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
     "CounterboredDrillCannedOpGC" : [ "StockHeight", "RapidToZ", "SafeRetractZ" ],
     "CounterboredCenterdrillCannedStartGC" : [ "FeedRate", "SafeRetractZ" ],
@@ -251,6 +252,11 @@ function parseHoleDesc() {
     params["StockLength"] = lines[5];
     params["StockHeight"] = lines[6];
     var v;
+    v = params["HoleType"];
+    if (v != "Counterbore") {
+	alert("Only counterbore hole types are currently allowed");
+	return null;
+    }
     v = params["StockLength"];
     if (!isNumber(v)) {
         alert("Suspicious stock length '" + v + "'");
